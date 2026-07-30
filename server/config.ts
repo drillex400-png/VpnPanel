@@ -1,0 +1,73 @@
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const SECRETS_FILE = path.join(process.cwd(), ".server-secrets.json");
+
+interface PersistedSecrets {
+  jwtSecret: string;
+  encryptionKey: string; // 32-byte hex
+}
+
+/**
+ * Loads secrets from environment variables. If not present, falls back to a
+ * locally persisted file so the app keeps working across restarts in dev/self-hosted
+ * setups. In production you SHOULD set JWT_SECRET and ENCRYPTION_KEY explicitly via
+ * environment variables (e.g. in your process manager / container secrets) --
+ * the auto-generated file is a convenience fallback, not a production security posture.
+ */
+function loadOrCreateSecrets(): PersistedSecrets {
+  const envJwt = process.env.JWT_SECRET;
+  const envEnc = process.env.ENCRYPTION_KEY;
+
+  if (envJwt && envEnc) {
+    if (!/^[0-9a-f]{64}$/i.test(envEnc)) {
+      throw new Error(
+        "ENCRYPTION_KEY must be a 64-character hex string (32 bytes). Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+      );
+    }
+    return { jwtSecret: envJwt, encryptionKey: envEnc };
+  }
+
+  // Try to load previously generated local secrets
+  if (fs.existsSync(SECRETS_FILE)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(SECRETS_FILE, "utf-8"));
+      if (raw.jwtSecret && raw.encryptionKey) {
+        return raw;
+      }
+    } catch {
+      // fall through to regeneration
+    }
+  }
+
+  const generated: PersistedSecrets = {
+    jwtSecret: envJwt || crypto.randomBytes(48).toString("hex"),
+    encryptionKey: envEnc || crypto.randomBytes(32).toString("hex"),
+  };
+
+  fs.writeFileSync(SECRETS_FILE, JSON.stringify(generated, null, 2), { mode: 0o600 });
+  console.warn(
+    "[SECURITY] JWT_SECRET / ENCRYPTION_KEY were not set via environment variables.\n" +
+      `[SECURITY] Auto-generated secrets have been persisted to ${SECRETS_FILE} (mode 600).\n` +
+      "[SECURITY] For production, set JWT_SECRET and ENCRYPTION_KEY as real environment variables and keep them out of the filesystem/version control."
+  );
+
+  return generated;
+}
+
+const secrets = loadOrCreateSecrets();
+
+export const CONFIG = {
+  PORT: Number(process.env.PORT) || 3000,
+  NODE_ENV: process.env.NODE_ENV || "development",
+  JWT_SECRET: secrets.jwtSecret,
+  ENCRYPTION_KEY: Buffer.from(secrets.encryptionKey, "hex"),
+  JWT_EXPIRY: process.env.JWT_EXPIRY || "12h",
+  DB_FILE: path.join(process.cwd(), "data", "db.json"),
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  ALLOWED_ORIGINS: (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
+};

@@ -1,0 +1,6 @@
+{
+  "name": "Linux Server Mobile Cockpit",
+  "description": "Mobile-first Linux server management panel over SSH with real-time metrics, VPN protocol auto-deployer (Xray VLESS REALITY, AnyTLS), visual file manager, systemd control, firewall, and AI VPN Expert Assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
