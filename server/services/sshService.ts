@@ -1,5 +1,6 @@
 import { exec } from "child_process";
 import { Client as SSHClient } from "ssh2";
+import { execPooled } from "./sshPool.js";
 
 export interface SshConnectionParams {
   host: string;
@@ -378,5 +379,84 @@ export function parseRealLinuxMetrics(raw: string, fallbackHost: string) {
       txKbps: Math.floor(300 + Math.random() * 600),
       activeConnections,
     },
+  };
+}
+
+
+/**
+ * Same contract as runSshCommand, but reuses a persistent pooled SSH connection keyed by
+ * `poolKey` (see server/services/sshPool.ts) instead of opening a fresh TCP+SSH handshake
+ * per call. Used by the metrics WebSocket stream and the exec/metrics HTTP routes so
+ * repeated calls against the same server (polling, terminal commands) don't pay full
+ * connection-setup cost every time. Demo/local-passwordless paths bypass the pool entirely
+ * since they never touch a real remote SSH connection in the first place.
+ */
+export async function runPooledSshCommand(
+  poolKey: string,
+  config: { host: string; port: number; username: string; password?: string; privateKey?: string; isDemo?: boolean },
+  command: string
+): Promise<SshExecResult> {
+  if (config.isDemo || config.host === "demo" || config.host === "localhost-demo" || config.host === "127.0.0.1-demo") {
+    return handleDemoCommand(command);
+  }
+
+  if (isBlockedHost(config.host)) {
+    return { stdout: "", stderr: "Подключение к этому адресу заблокировано политикой безопасности.", code: 255 };
+  }
+
+  const isLocalHost = config.host === "localhost" || config.host === "127.0.0.1" || config.host === "local";
+  if (isLocalHost && !config.password && !config.privateKey) {
+    return runSshCommand(config, command);
+  }
+
+  return execPooled(poolKey, config, command);
+}
+
+// Shared metrics probe command -- used by both the one-off HTTP /api/ssh/metrics route and
+// the live WebSocket metrics stream so they stay in sync.
+export const METRICS_PROBE_CMD = `
+  echo "===HOSTNAME==="; hostname 2>/dev/null
+  echo "===KERNEL==="; uname -r 2>/dev/null
+  echo "===ARCH==="; uname -m 2>/dev/null
+  echo "===UPTIME==="; uptime -p 2>/dev/null || uptime 2>/dev/null
+  echo "===LOADAVG==="; cat /proc/loadavg 2>/dev/null
+  echo "===CORES==="; nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo "1"
+  echo "===CPUMODEL==="; grep 'model name' /proc/cpuinfo 2>/dev/null | head -n 1 | cut -d: -f2 || echo "x86_64 CPU"
+  echo "===FREE==="; free -b 2>/dev/null || free -m 2>/dev/null
+  echo "===DF==="; df -P -k 2>/dev/null
+  echo "===NETSTAT==="; netstat -an 2>/dev/null | grep ESTABLISHED | wc -l 2>/dev/null || echo "8"
+`;
+
+/** Same synthetic-but-live-feeling demo metrics payload the HTTP route has always returned. */
+export function buildDemoMetrics(): any {
+  const time = new Date().toLocaleTimeString();
+  const cpuPct = Math.floor(18 + Math.sin(Date.now() / 3000) * 12 + Math.random() * 8);
+  const ramTotalMb = 16384;
+  const ramUsedMb = Math.floor(6200 + Math.cos(Date.now() / 5000) * 400 + Math.random() * 150);
+
+  return {
+    timestamp: time,
+    os: {
+      hostname: "ubuntu-prod-srv01",
+      distro: "Ubuntu 24.04.1 LTS",
+      kernel: "6.5.0-28-generic",
+      arch: "x86_64",
+      uptime: "14 days, 6 hours, 22 mins",
+    },
+    cpu: { usagePct: cpuPct, cores: 8, model: "AMD EPYC 7763 64-Core Processor", loadAvg: [0.42, 0.38, 0.35] },
+    memory: {
+      totalMb: ramTotalMb,
+      usedMb: ramUsedMb,
+      freeMb: ramTotalMb - ramUsedMb,
+      cachedMb: 4120,
+      swapTotalMb: 4096,
+      swapUsedMb: 124,
+    },
+    disk: [
+      { filesystem: "/dev/sda1", mount: "/", sizeGb: 100, usedGb: 42, availGb: 58, usePct: 42 },
+      { filesystem: "/dev/sda2", mount: "/var/data", sizeGb: 500, usedGb: 180, availGb: 320, usePct: 36 },
+      { filesystem: "/dev/nvme0n1p1", mount: "/home", sizeGb: 1000, usedGb: 310, availGb: 690, usePct: 31 },
+    ],
+    network: { rxKbps: Math.floor(120 + Math.random() * 350), txKbps: Math.floor(450 + Math.random() * 800), activeConnections: 18 },
   };
 }

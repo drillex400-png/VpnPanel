@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import http from "http";
 import helmet from "helmet";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
@@ -10,6 +11,7 @@ import { authRouter } from "./server/routes/auth.js";
 import { serversRouter } from "./server/routes/servers.js";
 import { sshRouter } from "./server/routes/ssh.js";
 import { aiRouter } from "./server/routes/ai.js";
+import { attachMetricsWebSocket } from "./server/services/wsMetrics.js";
 
 const app = express();
 
@@ -58,8 +60,14 @@ async function startServer() {
     });
   }
 
-  app.listen(CONFIG.PORT, "0.0.0.0", () => {
+  // Use a raw http.Server (instead of app.listen's implicit one) so the WebSocket metrics
+  // stream can attach to the same listener and share the port with the HTTP/Vite traffic.
+  const httpServer = http.createServer(app);
+  attachMetricsWebSocket(httpServer);
+
+  httpServer.listen(CONFIG.PORT, "0.0.0.0", () => {
     console.log(`Linux Mobile Cockpit Server running on http://0.0.0.0:${CONFIG.PORT}`);
+    console.log(`Live metrics WebSocket available at ws://0.0.0.0:${CONFIG.PORT}/ws/metrics/:serverId`);
   });
 }
 

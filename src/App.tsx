@@ -7,6 +7,7 @@ import {
   fetchMetrics,
   DEMO_SERVER_CONFIG,
 } from "./services/api";
+import { useLiveMetrics } from "./hooks/useLiveMetrics";
 import { useAuth } from "./contexts/AuthContext";
 import { useToast } from "./contexts/ToastContext";
 import { LoginPage } from "./components/LoginPage";
@@ -45,8 +46,9 @@ function Dashboard() {
     })();
   }, []);
 
-  // Real-time Metrics state
-  const [metrics, setMetrics] = useState<SystemMetrics>({
+  // Real-time metrics -- streamed live over WebSocket (one pooled SSH connection per server on
+  // the backend) instead of the previous 4s HTTP poll. See src/hooks/useLiveMetrics.ts.
+  const DEFAULT_METRICS: SystemMetrics = {
     timestamp: "Just now",
     os: {
       hostname: "ubuntu-prod-srv01",
@@ -79,34 +81,30 @@ function Dashboard() {
       txKbps: 680,
       activeConnections: 24,
     },
-  });
-
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [latencyMs, setLatencyMs] = useState(14);
-
-  // Load metrics
-  const loadLiveMetrics = async () => {
-    setIsRefreshing(true);
-    const start = Date.now();
-    const newMetrics = await fetchMetrics(currentServer);
-    setMetrics(newMetrics);
-    setLatencyMs(Date.now() - start + 10);
-    setIsRefreshing(false);
-    if (newMetrics.connectionError) {
-      toast.warning("Проблема с подключением", newMetrics.connectionError);
-    }
   };
 
-  // Poll metrics every 4 seconds for live telemetry (only once server profiles are loaded)
+  const { metrics: liveMetrics, connectionError, latencyMs } = useLiveMetrics(currentServer);
+  const metrics = liveMetrics || DEFAULT_METRICS;
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const lastWarnedError = React.useRef<string | undefined>(undefined);
+
   useEffect(() => {
-    if (!serversLoaded) return;
-    loadLiveMetrics();
-    const timer = setInterval(() => {
-      loadLiveMetrics();
-    }, 4000);
-    return () => clearInterval(timer);
+    if (connectionError && connectionError !== lastWarnedError.current) {
+      toast.warning("Проблема с подключением", connectionError);
+      lastWarnedError.current = connectionError;
+    }
+    if (!connectionError) lastWarnedError.current = undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentServer, serversLoaded]);
+  }, [connectionError]);
+
+  // Manual "refresh" button: the WS stream already pushes every 4s, so this just forces one
+  // extra one-off fetch for instant user-visible feedback without waiting for the next tick.
+  const loadLiveMetrics = async () => {
+    setIsRefreshing(true);
+    await fetchMetrics(currentServer);
+    setIsRefreshing(false);
+  };
 
   const handleSaveServer = async (newServer: SSHConfig) => {
     try {
