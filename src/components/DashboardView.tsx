@@ -19,6 +19,9 @@ import {
 // Lazy-loaded: recharts is one of the heaviest deps in the app and previously shipped in the
 // main bundle even when the user never opens the Dashboard tab. Now it's only fetched when
 // this graph card actually needs to render.
+import { motion } from "motion/react";
+import { AnimatedNumber } from "./AnimatedNumber";
+
 const ResourceHistoryChart = lazy(() => import("./ResourceHistoryChart"));
 
 const ChartSkeleton = () => (
@@ -76,7 +79,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const mainDisk = metrics.disk[0] || { usePct: 42, usedGb: 42, sizeGb: 100 };
 
   return (
-    <div className="space-y-5 pb-20 lg:pb-8 animate-in fade-in duration-200">
+    <motion.div
+      className="space-y-5 pb-20 lg:pb-8"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+    >
       {/* SSH Connection Alert Banner if live metric connection failed */}
       {metrics.connectionError && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-xs text-amber-300 flex items-start gap-3 shadow-lg">
@@ -148,18 +156,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             Загрузка CPU
           </p>
           <p className="text-2xl font-bold font-mono text-emerald-400 drop-shadow-sm">
-            {metrics.cpu.usagePct}%
+            <AnimatedNumber value={metrics.cpu.usagePct} suffix="%" />
           </p>
           <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
+            <motion.div
+              className={`h-full rounded-full ${
                 metrics.cpu.usagePct > 80
                   ? "bg-rose-500"
                   : metrics.cpu.usagePct > 50
                   ? "bg-amber-400"
                   : "bg-gradient-to-r from-emerald-500 to-teal-400"
               }`}
-              style={{ width: `${metrics.cpu.usagePct}%` }}
+              animate={{ width: `${metrics.cpu.usagePct}%` }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             />
           </div>
           <div className="text-[10px] text-slate-400 pt-1 flex justify-between font-mono font-medium">
@@ -174,14 +183,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             Память ОЗУ
           </p>
           <p className="text-2xl font-bold font-mono text-cyan-400 drop-shadow-sm">
-            {ramUsedGb}<span className="text-xs text-slate-400">/{ramTotalGb}GB</span>
+            <AnimatedNumber value={parseFloat(ramUsedGb)} decimals={1} /><span className="text-xs text-slate-400">/{ramTotalGb}GB</span>
           </p>
           <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
+            <motion.div
+              className={`h-full rounded-full ${
                 ramPct > 85 ? "bg-rose-500" : "bg-gradient-to-r from-cyan-500 to-blue-500"
               }`}
-              style={{ width: `${ramPct}%` }}
+              animate={{ width: `${ramPct}%` }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             />
           </div>
           <div className="text-[10px] text-slate-400 pt-1 flex justify-between font-mono font-medium">
@@ -196,14 +206,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             Занято на Диске
           </p>
           <p className="text-2xl font-bold font-mono text-amber-400 drop-shadow-sm">
-            {mainDisk.usePct}%<span className="text-xs text-slate-400"> ({mainDisk.usedGb}GB)</span>
+            <AnimatedNumber value={mainDisk.usePct} suffix="%" /><span className="text-xs text-slate-400"> ({mainDisk.usedGb}GB)</span>
           </p>
           <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
+            <motion.div
+              className={`h-full rounded-full ${
                 mainDisk.usePct > 85 ? "bg-rose-500" : "bg-gradient-to-r from-amber-500 to-orange-400"
               }`}
-              style={{ width: `${mainDisk.usePct}%` }}
+              animate={{ width: `${mainDisk.usePct}%` }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             />
           </div>
           <div className="text-[10px] text-slate-400 pt-1 flex justify-between font-mono font-medium">
@@ -218,12 +229,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             Трафик Сети
           </p>
           <p className="text-2xl font-bold font-mono text-indigo-400 drop-shadow-sm">
-            {metrics.network.txKbps}<span className="text-xs text-slate-400">KB/s</span>
+            <AnimatedNumber value={metrics.network.txKbps} /><span className="text-xs text-slate-400">KB/s</span>
           </p>
           <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
-            <div
-              className="bg-gradient-to-r from-indigo-500 to-purple-400 h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(100, (metrics.network.txKbps / 1200) * 100)}%` }}
+            <motion.div
+              className="bg-gradient-to-r from-indigo-500 to-purple-400 h-full rounded-full"
+              animate={{ width: `${Math.min(100, (metrics.network.txKbps / 1200) * 100)}%` }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             />
           </div>
           <div className="text-[10px] text-slate-400 pt-1 flex justify-between font-mono font-medium">
@@ -389,6 +401,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </table>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

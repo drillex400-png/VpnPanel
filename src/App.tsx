@@ -1,4 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { TabType, SSHConfig, SystemMetrics } from "./types";
 import {
   getSavedServers,
@@ -175,42 +176,56 @@ function Dashboard() {
 
         {/* Viewport Canvas */}
         <main className="flex-1 p-3 sm:p-6 overflow-y-auto pb-24 lg:pb-8">
-          {activeTab === "dashboard" && (
-            <DashboardView
-              metrics={metrics}
-              server={currentServer}
-              onNavigateTab={(tab) => setActiveTab(tab)}
-              onRefresh={loadLiveMetrics}
-            />
-          )}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {activeTab === "dashboard" && (
+                <DashboardView
+                  metrics={metrics}
+                  server={currentServer}
+                  onNavigateTab={(tab) => setActiveTab(tab)}
+                  onRefresh={loadLiveMetrics}
+                />
+              )}
 
-          <Suspense fallback={<ViewLoadingFallback />}>
-            {activeTab === "vpn" && <VPNView server={currentServer} />}
+              <Suspense fallback={<ViewLoadingFallback />}>
+                {activeTab === "vpn" && <VPNView server={currentServer} />}
 
-            {activeTab === "files" && <FileManagerView server={currentServer} />}
+                {activeTab === "files" && <FileManagerView server={currentServer} />}
 
-            {activeTab === "processes" && <ProcessesView server={currentServer} />}
+                {activeTab === "processes" && <ProcessesView server={currentServer} />}
 
-            {activeTab === "services" && <ServicesView server={currentServer} />}
+                {activeTab === "services" && <ServicesView server={currentServer} />}
 
-            {activeTab === "firewall" && <FirewallView server={currentServer} />}
+                {activeTab === "firewall" && <FirewallView server={currentServer} />}
 
-            {activeTab === "logs" && <LogsView server={currentServer} />}
+                {activeTab === "logs" && <LogsView server={currentServer} />}
 
-            {activeTab === "terminal" && <TerminalView server={currentServer} />}
+                {activeTab === "terminal" && <TerminalView server={currentServer} />}
 
-            {activeTab === "tools" && <ToolsView server={currentServer} />}
-          </Suspense>
+                {activeTab === "tools" && <ToolsView server={currentServer} />}
+              </Suspense>
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 
-      {/* Modal for SSH Server Connection */}
-      {showConnectModal && (
-        <ServerConnectModal
-          onClose={() => setShowConnectModal(false)}
-          onSaveServer={handleSaveServer}
-        />
-      )}
+      {/* Modal for SSH Server Connection -- wrapped in AnimatePresence so the modal's own
+          exit animation (see ServerConnectModal.tsx) actually gets to play before unmount,
+          instead of the component vanishing instantly when showConnectModal flips to false. */}
+      <AnimatePresence>
+        {showConnectModal && (
+          <ServerConnectModal
+            onClose={() => setShowConnectModal(false)}
+            onSaveServer={handleSaveServer}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

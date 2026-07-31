@@ -1,4 +1,5 @@
 import React from "react";
+import { motion } from "motion/react";
 import { TabType } from "../types";
 import {
   LayoutDashboard,
@@ -31,6 +32,10 @@ const NAV_ITEMS: { id: TabType; label: string; icon: React.FC<{ className?: stri
   { id: "tools", label: "Утилиты", icon: Wrench },
 ];
 
+// Shared spring used by the sliding active-tab indicators below -- snappy but not bouncy,
+// matches the easeOutExpo-ish feel used elsewhere in the app.
+const ACTIVE_SPRING = { type: "spring" as const, stiffness: 420, damping: 34 };
+
 export const Navigation: React.FC<NavigationProps> = ({
   activeTab,
   onTabChange,
@@ -53,25 +58,36 @@ export const Navigation: React.FC<NavigationProps> = ({
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
-                className={`relative flex flex-col items-center justify-center py-2 px-3 min-w-[66px] min-h-[50px] rounded-2xl transition duration-150 shrink-0 active:scale-95 ${
-                  isActive
-                    ? "text-emerald-300 font-bold bg-emerald-500/10 border border-emerald-500/25 shadow-lg shadow-emerald-950/40"
-                    : "text-slate-400 hover:text-slate-200"
+                className={`relative flex flex-col items-center justify-center py-2 px-3 min-w-[66px] min-h-[50px] rounded-2xl shrink-0 active:scale-95 ${
+                  isActive ? "text-emerald-300 font-bold" : "text-slate-400 hover:text-slate-200"
                 }`}
                 id={`tab-btn-${item.id}`}
               >
-                {/* Active indicator top bar */}
+                {/* Sliding highlight -- shares a layoutId across buttons so switching tabs
+                    animates the pill from the old position to the new one instead of an
+                    instant on/off swap. */}
                 {isActive && (
-                  <span className="absolute -top-2 w-7 h-1 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/80" />
+                  <motion.div
+                    layoutId="mobile-nav-active-bg"
+                    className="absolute inset-0 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl shadow-lg shadow-emerald-950/40"
+                    transition={ACTIVE_SPRING}
+                  />
+                )}
+                {isActive && (
+                  <motion.span
+                    layoutId="mobile-nav-active-top"
+                    className="absolute -top-2 w-7 h-1 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/80"
+                    transition={ACTIVE_SPRING}
+                  />
                 )}
 
-                <div className="relative">
+                <div className="relative z-10">
                   <Icon className={`w-5 h-5 transition-transform ${isActive ? "text-emerald-400 scale-110" : "text-slate-400"}`} />
                   {hasBadge && (
                     <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-[#090d16] animate-pulse" />
                   )}
                 </div>
-                <span className="text-[10px] font-semibold tracking-tight mt-1 leading-none whitespace-nowrap">
+                <span className="relative z-10 text-[10px] font-semibold tracking-tight mt-1 leading-none whitespace-nowrap">
                   {item.label}
                 </span>
               </button>
@@ -101,19 +117,25 @@ export const Navigation: React.FC<NavigationProps> = ({
                 <button
                   key={item.id}
                   onClick={() => onTabChange(item.id)}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl font-semibold text-xs transition duration-150 ${
-                    isActive
-                      ? "bg-gradient-to-r from-emerald-500/15 to-teal-500/10 text-emerald-300 font-bold border border-emerald-500/30 shadow-md shadow-emerald-950/30"
-                      : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                  className={`relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl font-semibold text-xs overflow-hidden ${
+                    isActive ? "text-emerald-300 font-bold" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  {isActive && (
+                    <motion.div
+                      layoutId="desktop-nav-active-bg"
+                      className="absolute inset-0 bg-gradient-to-r from-emerald-500/15 to-teal-500/10 border border-emerald-500/30 rounded-2xl shadow-md shadow-emerald-950/30"
+                      transition={ACTIVE_SPRING}
+                    />
+                  )}
+
+                  <div className="relative z-10 flex items-center gap-3">
                     <Icon className={`w-4 h-4 ${isActive ? "text-emerald-400" : "text-slate-400"}`} />
                     <span>{item.label}</span>
                   </div>
 
                   {badgeCount > 0 && (
-                    <span className="px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 shadow-sm">
+                    <span className="relative z-10 px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 shadow-sm">
                       {badgeCount}
                     </span>
                   )}
@@ -140,4 +162,3 @@ export const Navigation: React.FC<NavigationProps> = ({
     </>
   );
 };
-

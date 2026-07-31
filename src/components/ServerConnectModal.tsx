@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
+import { motion } from "motion/react";
 import { SSHConfig } from "../types";
 import { testSSHConnection } from "../services/api";
 import {
@@ -88,8 +89,20 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-4 sm:p-6 space-y-4 sm:space-y-5 shadow-2xl my-auto animate-in zoom-in-95 duration-150 max-h-[85vh] overflow-y-auto scrollbar-thin">
+    <motion.div
+      className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+    >
+      <motion.div
+        className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-4 sm:p-6 space-y-4 sm:space-y-5 shadow-2xl my-auto max-h-[85vh] overflow-y-auto scrollbar-thin"
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 4 }}
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-3">
@@ -287,8 +300,8 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
             </button>
           </div>
         </div>
-      </div>
-    </div>,
+      </motion.div>
+    </motion.div>,
     document.body
   );
 };
