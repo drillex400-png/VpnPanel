@@ -203,12 +203,29 @@ function Dashboard() {
 }
 
 export default function App() {
-  const { isLoading, token, setupRequired } = useAuth();
+  const { isLoading, token, setupRequired, bootError, retryBootstrap } = useAuth();
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#07090e] flex items-center justify-center text-slate-400">
         <Loader2 className="w-6 h-6 animate-spin" />
+      </div>
+    );
+  }
+
+  if (bootError) {
+    return (
+      <div className="min-h-screen bg-[#07090e] flex items-center justify-center px-6">
+        <div className="max-w-sm w-full text-center space-y-4">
+          <p className="text-slate-200 font-medium">Не удалось подключиться к серверу</p>
+          <p className="text-slate-500 text-sm">{bootError}</p>
+          <button
+            onClick={() => retryBootstrap()}
+            className="px-4 py-2 rounded-lg bg-emerald-500 text-black font-medium hover:bg-emerald-400 transition-colors"
+          >
+            Повторить
+          </button>
+        </div>
       </div>
     );
   }
