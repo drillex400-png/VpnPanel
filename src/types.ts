@@ -127,6 +127,13 @@ export interface UserAccount {
   isSudoer: boolean;
 }
 
+export interface SoftwarePackageStatus {
+  installed: boolean;
+  version: string | null;
+  active: boolean; // systemctl is-active === "active" (n/a for CLI-only tools like the docker client)
+  extra?: string | null; // secondary version info, e.g. Docker Compose version
+}
+
 export type VPNProtocolId =
   | "xray-vless-reality"
   | "anytls"

@@ -20,6 +20,7 @@ import {
   X,
   Trash2,
   LogOut,
+  Package,
 } from "lucide-react";
 
 interface HeaderProps {
@@ -64,6 +65,35 @@ export const Header: React.FC<HeaderProps> = ({
       }
     } catch (e: any) {
       toast.error(`${label} — ошибка`, e?.message || "Не удалось выполнить команду");
+    } finally {
+      setRunningAction(null);
+    }
+  };
+
+  // Docker install needs real verification (systemctl is-active + parsed version), not just
+  // an exit code -- the install script's last exec-chained command can succeed even if the
+  // daemon didn't actually come up, so a plain runQuickAction here would be misleading.
+  const handleInstallDocker = async () => {
+    const label = "Установить Docker";
+    setRunningAction(label);
+    setShowQuickActionModal(false);
+    try {
+      const command = `sudo bash -c 'curl -fsSL https://get.docker.com | sh && systemctl enable --now docker'; echo "===VERIFY==="; systemctl is-active docker 2>/dev/null; docker --version 2>/dev/null || echo NOT_FOUND`;
+      const result = await execCommand(currentServer, command);
+      const verifySection = (result.stdout || "").split("===VERIFY===")[1] || "";
+      const isActive = verifySection.trim().split("\n")[0]?.trim() === "active";
+      const versionMatch = verifySection.match(/version\s+([\d.]+)/i);
+
+      if (isActive && versionMatch) {
+        toast.success(label, `Docker ${versionMatch[1]} установлен, служба активна`);
+      } else {
+        toast.error(
+          `${label} — не подтверждена`,
+          (result.stderr || verifySection || "Не удалось подтвердить статус службы после установки").slice(0, 300)
+        );
+      }
+    } catch (e: any) {
+      toast.error(`${label} — ошибка`, e?.message || "Не удалось выполнить установку");
     } finally {
       setRunningAction(null);
     }
@@ -356,6 +386,19 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                   <div className="text-[11px] text-slate-400 leading-normal">
                     Перезапуск фонового контейнерного сокета systemd
+                  </div>
+                </button>
+
+                <button
+                  onClick={handleInstallDocker}
+                  className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
+                >
+                  <div className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                    <Package className="w-4 h-4 shrink-0" />
+                    Установить Docker
+                  </div>
+                  <div className="text-[11px] text-slate-400 leading-normal">
+                    Официальный скрипт get.docker.com, с проверкой запуска службы
                   </div>
                 </button>
 
