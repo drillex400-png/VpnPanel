@@ -168,46 +168,57 @@ const SNI_PRESETS = [
   "gateway.icloud.com",
 ];
 
+// Demo-only seed data for the "Мои VPN" list -- ONLY ever shown for the built-in demo
+// server, so a real production server never starts out displaying VPN services that
+// don't actually exist on it. Real servers start with an empty list and are populated
+// exclusively by actual deploys made through this panel (see handleStartDeploy) -- there
+// is no "scan the server and discover any pre-existing VPN install" feature yet, so a
+// protocol installed outside the panel before it was ever connected won't appear here.
+const DEMO_INSTALLED_SERVICES: InstalledVPNService[] = [
+  {
+    id: "vpn-inst-1",
+    protocolId: "xray-vless-reality",
+    name: "Xray-core (VLESS + REALITY)",
+    status: "active",
+    port: 443,
+    sni: "dl.google.com",
+    uuid: "e89c4a12-7b3e-4f12-9012-a1b2c3d4e5f6",
+    publicKey: "x8F2k9L1mN3pQ5rT7vW9xZ2aC4eG6iI8kM0oQ2sU4wY",
+    clientLink: "vless://e89c4a12-7b3e-4f12-9012-a1b2c3d4e5f6@demo.server.com:443?type=grpc&security=reality&pbk=x8F2k9L1mN3pQ5rT7vW9xZ2aC4eG6iI8kM0oQ2sU4wY&fp=chrome&sni=dl.google.com#Ubuntu-VLESS-REALITY",
+    uptime: "4 дня 12 часов",
+    trafficRxGb: 14.8,
+    trafficTxGb: 42.1,
+    activeClientsCount: 3,
+    installedAt: "2026-07-26",
+    version: "v1.8.24",
+    configPath: "/etc/xray/config.json",
+  },
+  {
+    id: "vpn-inst-2",
+    protocolId: "anytls",
+    name: "sing-box (AnyTLS Core)",
+    status: "active",
+    port: 8443,
+    sni: "swdist.apple.com",
+    uuid: "3f9a12b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b",
+    clientLink: "anytls://3f9a12b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b@demo.server.com:8443?sni=swdist.apple.com#Ubuntu-AnyTLS-sing-box",
+    uptime: "1 день 6 часов",
+    trafficRxGb: 4.2,
+    trafficTxGb: 12.5,
+    activeClientsCount: 2,
+    installedAt: "2026-07-29",
+    version: "sing-box (Official)",
+    configPath: "/etc/sing-box/config.json",
+  },
+];
+
 export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   const toast = useToast();
-  // Installed VPNs State
-  const [installedServices, setInstalledServices] = useState<InstalledVPNService[]>([
-    {
-      id: "vpn-inst-1",
-      protocolId: "xray-vless-reality",
-      name: "Xray-core (VLESS + REALITY)",
-      status: "active",
-      port: 443,
-      sni: "dl.google.com",
-      uuid: "e89c4a12-7b3e-4f12-9012-a1b2c3d4e5f6",
-      publicKey: "x8F2k9L1mN3pQ5rT7vW9xZ2aC4eG6iI8kM0oQ2sU4wY",
-      clientLink: "vless://e89c4a12-7b3e-4f12-9012-a1b2c3d4e5f6@demo.server.com:443?type=grpc&security=reality&pbk=x8F2k9L1mN3pQ5rT7vW9xZ2aC4eG6iI8kM0oQ2sU4wY&fp=chrome&sni=dl.google.com#Ubuntu-VLESS-REALITY",
-      uptime: "4 дня 12 часов",
-      trafficRxGb: 14.8,
-      trafficTxGb: 42.1,
-      activeClientsCount: 3,
-      installedAt: "2026-07-26",
-      version: "v1.8.24",
-      configPath: "/etc/xray/config.json",
-    },
-    {
-      id: "vpn-inst-2",
-      protocolId: "anytls",
-      name: "sing-box (AnyTLS Core)",
-      status: "active",
-      port: 8443,
-      sni: "swdist.apple.com",
-      uuid: "3f9a12b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b",
-      clientLink: "anytls://3f9a12b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b@demo.server.com:8443?sni=swdist.apple.com#Ubuntu-AnyTLS-sing-box",
-      uptime: "1 день 6 часов",
-      trafficRxGb: 4.2,
-      trafficTxGb: 12.5,
-      activeClientsCount: 2,
-      installedAt: "2026-07-29",
-      version: "sing-box (Official)",
-      configPath: "/etc/sing-box/config.json",
-    },
-  ]);
+  // Installed VPNs State -- seeded per-server below (demo seed only for the demo server;
+  // real servers start empty and fill up only from actual deploys/detections).
+  const [installedServices, setInstalledServices] = useState<InstalledVPNService[]>(
+    server.isDemo ? DEMO_INSTALLED_SERVICES : []
+  );
 
   // Modals & Drawers
   const [selectedDeployProtocol, setSelectedDeployProtocol] = useState<VPNProtocolCatalog | null>(null);
@@ -294,6 +305,14 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     }
   ]);
 
+  // Reset the list per-server (demo seed for the demo server, empty for real ones --
+  // see DEMO_INSTALLED_SERVICES above) whenever the selected server changes, then pull
+  // real systemd status for real servers so displayed Active/Stopped badges reflect
+  // what's actually running rather than stale state carried over from a previous server.
+  useEffect(() => {
+    setInstalledServices(server.isDemo ? DEMO_INSTALLED_SERVICES : []);
+  }, [server.id, server.isDemo]);
+
   // Execute SSH Status check on load for real servers
   useEffect(() => {
     checkServerVpnStatus();
@@ -316,28 +335,46 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     }
   }, [xrayTransport, xraySecurity, xrayFlow]);
 
+  // Bugs fixed here (found while auditing Start/Stop + status display on user's request):
+  // 1. The systemd unit name for AnyTLS was queried as "anytls.service" -- that unit
+  //    doesn't exist. The real deploy pipeline installs AnyTLS as the "sing-box" service
+  //    (see handleStartDeploy's serviceName assignment), so this always came back
+  //    unknown/inactive for a genuinely-running AnyTLS service.
+  // 2. `res.stdout.split("\\n")` was splitting on the literal two-character text
+  //    backslash+n, NOT the real newline character systemctl actually separates each
+  //    unit's status with. So multi-unit output like "active\ninactive\nactive" never
+  //    split at all -- `statuses` ended up as a single one-element array containing the
+  //    whole multi-line blob, which then never string-equalled "active" for ANY
+  //    protocol. Net effect: every real, genuinely-running VPN service got flagged
+  //    "inactive" here on every server switch / page load, regardless of its true state.
+  // Replaced with distinct marker-tagged systemctl calls (one per unit) so parsing
+  // doesn't depend on positional array order or newline-splitting at all.
   const checkServerVpnStatus = async () => {
     if (server.isDemo) return;
 
     try {
-      const res = await execCommand(server, "systemctl is-active xray anytls.service awg-quick@awg0.service 2>/dev/null");
-      if (res.stdout) {
-        const statuses = res.stdout.split("\\n").map(s => s.trim());
-        setInstalledServices(prev => prev.map(inst => {
-          let expectedStatus = "inactive";
-          if (inst.protocolId.includes("xray") || inst.protocolId === "shadowsocks-2022") {
-            expectedStatus = statuses[0];
-          } else if (inst.protocolId === "anytls") {
-            expectedStatus = statuses[1];
-          } else if (inst.protocolId === "amnezia-wg") {
-            expectedStatus = statuses[2];
-          }
-          return {
-            ...inst,
-            status: expectedStatus === "active" ? "active" : "inactive"
-          };
-        }));
-      }
+      const res = await execCommand(
+        server,
+        `echo "XRAY:$(systemctl is-active xray 2>/dev/null || echo inactive)"; ` +
+        `echo "ANYTLS:$(systemctl is-active sing-box 2>/dev/null || echo inactive)"; ` +
+        `echo "AWG:$(systemctl is-active awg-quick@awg0 2>/dev/null || echo inactive)"`
+      );
+      const stdout = res.stdout || "";
+      const xrayActive = /XRAY:active/.test(stdout);
+      const anytlsActive = /ANYTLS:active/.test(stdout);
+      const awgActive = /AWG:active/.test(stdout);
+
+      setInstalledServices(prev => prev.map(inst => {
+        let realActive = false;
+        if (inst.protocolId.includes("xray") || inst.protocolId === "shadowsocks-2022") {
+          realActive = xrayActive;
+        } else if (inst.protocolId === "anytls") {
+          realActive = anytlsActive;
+        } else if (inst.protocolId === "amnezia-wg") {
+          realActive = awgActive;
+        }
+        return { ...inst, status: realActive ? "active" : "inactive" };
+      }));
     } catch (e) {
       console.error(e);
     }
@@ -1031,38 +1068,70 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
     setIsDeploying(false);
   };
 
-  // Toggle service status
+  // Toggle service status.
+  // Bugs fixed here (found while auditing Start/Stop on user's request):
+  // 1. AnyTLS used the wrong systemd unit name ("anytls" -- doesn't exist; the real
+  //    deployed unit is "sing-box", per handleStartDeploy's serviceName). Every Start/Stop
+  //    click on an AnyTLS service was silently failing on the server the whole time.
+  // 2. There was NO verification at all -- not even an exit-code check, let alone the
+  //    project's standing rule to confirm via real `systemctl is-active`. The UI just
+  //    optimistically flipped status regardless of whether the SSH command actually
+  //    succeeded, so a failed stop/start (wrong unit name, permissions, service crash-
+  //    looping right back up, etc.) still showed as if it worked.
+  // Now: after the action, we query the unit's REAL state and only reflect that in the
+  // UI, with toast feedback either way -- consistent with the rest of the app.
   const handleToggleService = async (id: string) => {
     const srv = installedServices.find((s) => s.id === id);
     if (!srv) return;
 
-    const nextStatus = srv.status === "active" ? "inactive" : "active";
-    const action = nextStatus === "active" ? "start" : "stop";
+    const wantActive = srv.status !== "active";
+    const action = wantActive ? "start" : "stop";
 
-    if (!server.isDemo) {
-      try {
-        let systemdService = srv.protocolId;
-        if (srv.protocolId.includes("xray") || srv.protocolId === "shadowsocks-2022") {
-          systemdService = "xray";
-        } else if (srv.protocolId === "anytls") {
-          systemdService = "anytls";
-        } else if (srv.protocolId === "amnezia-wg") {
-          systemdService = "awg-quick@awg0";
-        }
-        await execCommand(server, `sudo systemctl ${action} ${systemdService}`);
-      } catch (err) {
-        console.error("Failed to toggle service", err);
-      }
+    let systemdService = srv.protocolId;
+    if (srv.protocolId.includes("xray") || srv.protocolId === "shadowsocks-2022") {
+      systemdService = "xray";
+    } else if (srv.protocolId === "anytls") {
+      systemdService = "sing-box";
+    } else if (srv.protocolId === "amnezia-wg") {
+      systemdService = "awg-quick@awg0";
     }
 
-    setInstalledServices((prev) =>
-      prev.map((s) => {
-        if (s.id === id) {
-          return { ...s, status: nextStatus };
-        }
-        return s;
-      })
-    );
+    if (server.isDemo) {
+      // Demo server has no real backing service -- keep the existing optimistic-toggle
+      // behavior so the showcase still works, just with matching toast feedback.
+      setInstalledServices((prev) => prev.map((s) => (s.id === id ? { ...s, status: wantActive ? "active" : "inactive" } : s)));
+      toast.success(wantActive ? "Служба запущена" : "Служба остановлена", `${srv.name} (демо-режим)`);
+      return;
+    }
+
+    try {
+      const result = await execCommand(
+        server,
+        `sudo systemctl ${action} ${systemdService} 2>&1; echo "===STATE:$(systemctl is-active ${systemdService} 2>/dev/null || echo inactive)"`
+      );
+      const stateMatch = (result.stdout || "").match(/===STATE:(\w+)/);
+      const realActive = stateMatch?.[1] === "active";
+      const succeeded = realActive === wantActive;
+
+      setInstalledServices((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, status: realActive ? "active" : "inactive" } : s))
+      );
+
+      if (succeeded) {
+        toast.success(
+          wantActive ? "Служба запущена" : "Служба остановлена",
+          `${srv.name} — подтверждено через systemctl is-active`
+        );
+      } else {
+        toast.error(
+          `Не удалось ${wantActive ? "запустить" : "остановить"} службу`,
+          `${srv.name}: реальный статус — ${stateMatch?.[1] || "неизвестен"}. ${(result.stdout || "").slice(-250)}`
+        );
+      }
+    } catch (err: any) {
+      console.error("Failed to toggle service", err);
+      toast.error(`Ошибка переключения службы ${srv.name}`, err?.message || "Не удалось выполнить команду");
+    }
   };
 
   // Copy helper
