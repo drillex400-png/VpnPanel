@@ -2148,6 +2148,12 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                               <span className="text-[9px] text-slate-500">0 = Без ограничений</span>
                             </div>
                           </div>
+
+                          <div className="bg-amber-950/40 border border-amber-800/50 rounded-xl p-2.5 text-[10px] text-amber-300 leading-relaxed">
+                            ⚠️ Эти лимиты пишутся в конфиг, но <strong>не применяются</strong> ванильным Xray-core (устанавливается официальным install-release.sh) —
+                            он их просто игнорирует. Реальный учёт трафика/срока/IP требует панели 3X-UI с собственным API-демоном,
+                            либо отдельного сервиса на этом сервере, который читает статистику Xray и сам отключает клиента. Сейчас это не реализовано.
+                          </div>
                         </div>
                       )}
 
