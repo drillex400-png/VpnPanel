@@ -101,21 +101,70 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
     )
     .sort((a, b) => (b[sortBy] as number) - (a[sortBy] as number));
 
+  // `kill -0 <pid>` sends no actual signal -- it only checks whether the pid still exists
+  // and is owned by us. Used here to verify a signal actually had its expected effect
+  // instead of assuming success from the command's exit code alone.
+  const checkPidAlive = async (pid: number): Promise<boolean> => {
+    const res = await execCommand(server, `kill -0 ${pid} 2>/dev/null && echo ALIVE || echo DEAD`);
+    return res.stdout.includes("ALIVE");
+  };
+
   const handleSendSignal = async (signal: string) => {
     if (!selectedProcess) return;
-    await execCommand(server, `kill -${signal} ${selectedProcess.pid}`);
-    if (signal === "9" || signal === "KILL") {
-      setProcesses((prev) => prev.filter((p) => p.pid !== selectedProcess.pid));
-    }
-    toast.success("Сигнал отправлен", `${signal} → PID ${selectedProcess.pid} (${selectedProcess.command})`);
+    const proc = selectedProcess;
     setSelectedProcess(null);
+
+    await execCommand(server, `kill -${signal} ${proc.pid}`);
+    // Give the process a brief moment to react before we re-check its status.
+    await new Promise((r) => setTimeout(r, 600));
+    const stillAlive = await checkPidAlive(proc.pid);
+
+    if (signal === "9") {
+      // SIGKILL cannot be caught or ignored -- the process must be gone by now.
+      if (!stillAlive) {
+        setProcesses((prev) => prev.filter((p) => p.pid !== proc.pid));
+        toast.success("Процесс завершён", `SIGKILL → PID ${proc.pid} (${proc.command})`);
+      } else {
+        toast.error("Не удалось завершить", `PID ${proc.pid} всё ещё жив после SIGKILL — проверь права`);
+      }
+    } else if (signal === "15") {
+      // SIGTERM is a request -- the process may ignore it or take longer to exit gracefully.
+      if (!stillAlive) {
+        setProcesses((prev) => prev.filter((p) => p.pid !== proc.pid));
+        toast.success("Процесс завершён", `SIGTERM → PID ${proc.pid} (${proc.command})`);
+      } else {
+        toast.warning("Процесс не завершился", `PID ${proc.pid} проигнорировал SIGTERM или ещё завершается — попробуй SIGKILL`);
+      }
+    } else {
+      // SIGHUP (1): normally used to reload config, process should still be running.
+      if (stillAlive) {
+        toast.success("Сигнал отправлен", `SIGHUP → PID ${proc.pid} (${proc.command}), процесс жив`);
+      } else {
+        toast.warning("Процесс завершился", `PID ${proc.pid} не пережил SIGHUP (не поддерживает reload)`);
+        setProcesses((prev) => prev.filter((p) => p.pid !== proc.pid));
+      }
+    }
   };
 
   const handleApplyRenice = async () => {
     if (!selectedProcess) return;
-    await execCommand(server, `renice -n ${reniceValue} -p ${selectedProcess.pid}`);
-    toast.success("Приоритет изменён", `PID ${selectedProcess.pid} → nice ${reniceValue}`);
+    const proc = selectedProcess;
+    const targetValue = reniceValue;
     setSelectedProcess(null);
+
+    await execCommand(server, `renice -n ${targetValue} -p ${proc.pid}`);
+    // Verify the actual nice value on the process instead of trusting the exit code --
+    // renice silently no-ops without root on some setups.
+    const res = await execCommand(server, `ps -o ni= -p ${proc.pid}`);
+    const actualNice = parseInt(res.stdout.trim(), 10);
+
+    if (!isNaN(actualNice) && actualNice === targetValue) {
+      toast.success("Приоритет изменён", `PID ${proc.pid} → nice ${targetValue}`);
+    } else if (!isNaN(actualNice)) {
+      toast.error("Приоритет не применился", `PID ${proc.pid}: запрошено ${targetValue}, фактически ${actualNice} (нужны права root?)`);
+    } else {
+      toast.error("Не удалось проверить приоритет", `PID ${proc.pid} мог уже завершиться`);
+    }
   };
 
   return (

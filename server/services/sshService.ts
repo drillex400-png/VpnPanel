@@ -101,9 +101,101 @@ export async function runSshCommand(
   });
 }
 
+// In-memory state for the demo server so that action commands (systemctl start/stop/restart,
+// kill signals) actually affect what subsequent "verification" queries report back -- this
+// keeps the demo experience honest with the same start->verify->reflect pattern used against
+// real servers, instead of always reporting a fixed canned state regardless of what the user
+// just did.
+const DEMO_SERVICE_DEFAULTS: Record<string, { active: string; sub: string; description: string }> = {
+  "nginx.service": { active: "active", sub: "running", description: "Nginx HTTP Server" },
+  "dockerd.service": { active: "active", sub: "running", description: "Docker Application Container Engine" },
+  "ssh.service": { active: "active", sub: "running", description: "OpenSSH server daemon" },
+  "postgresql.service": { active: "active", sub: "running", description: "PostgreSQL RDBMS" },
+  "redis-server.service": { active: "active", sub: "running", description: "Advanced key-value store" },
+  "ufw.service": { active: "active", sub: "running", description: "Uncomplicated firewall" },
+  "cron.service": { active: "active", sub: "running", description: "Regular background program processing daemon" },
+  "systemd-resolved.service": { active: "active", sub: "running", description: "System Location & Network Name Resolution" },
+  "failed-app.service": { active: "failed", sub: "failed", description: "Custom Node App Daemon" },
+};
+const demoServiceState: Record<string, { active: string; sub: string }> = {};
+function getDemoServiceState(unit: string) {
+  if (!demoServiceState[unit]) {
+    const defaults = DEMO_SERVICE_DEFAULTS[unit] || { active: "active", sub: "running" };
+    demoServiceState[unit] = { active: defaults.active, sub: defaults.sub };
+  }
+  return demoServiceState[unit];
+}
+
+// Demo pids from the canned `ps aux` list below -- tracked so `kill -0` reflects reality
+// after a kill signal was actually issued against one of them.
+const demoDeadPids = new Set<number>();
+const demoReniceValues: Record<number, number> = {};
+
 // Demo server response handler for seamless instant testing
 export function handleDemoCommand(cmd: string): { stdout: string; stderr: string; code: number } {
   const trimmed = cmd.trim();
+
+  // systemctl start/stop/restart <unit> -- mutate demo state so the next `systemctl show`
+  // verification query reflects it, same as it would on a real server.
+  const actionMatch = trimmed.match(/systemctl\s+(start|stop|restart)\s+([\w.@-]+)/);
+  if (actionMatch) {
+    const [, action, unitRaw] = actionMatch;
+    const unit = unitRaw.endsWith(".service") ? unitRaw : `${unitRaw}.service`;
+    const state = getDemoServiceState(unit);
+    if (action === "stop") {
+      state.active = "inactive";
+      state.sub = "dead";
+    } else {
+      state.active = "active";
+      state.sub = "running";
+    }
+    return { stdout: `Demo: ${action} issued for ${unit}`, stderr: "", code: 0 };
+  }
+
+  // systemctl show <unit> --property=ActiveState,SubState --value
+  const showMatch = trimmed.match(/systemctl\s+show\s+([\w.@-]+)\s+--property=ActiveState,SubState/);
+  if (showMatch) {
+    const unitRaw = showMatch[1];
+    const unit = unitRaw.endsWith(".service") ? unitRaw : `${unitRaw}.service`;
+    const state = getDemoServiceState(unit);
+    return { stdout: `${state.active}\n${state.sub}\n`, stderr: "", code: 0 };
+  }
+
+  // kill -0 <pid> 2>/dev/null && echo ALIVE || echo DEAD  (existence check, no real signal sent).
+  // Must be checked BEFORE the generic kill-signal matcher below, since "0" also matches \d+
+  // there and would otherwise swallow this as a (no-op) signal send instead of a status check.
+  const kill0Match = trimmed.match(/kill\s+-0\s+(\d+)/);
+  if (kill0Match) {
+    const pid = parseInt(kill0Match[1], 10);
+    return { stdout: demoDeadPids.has(pid) ? "DEAD\n" : "ALIVE\n", stderr: "", code: 0 };
+  }
+
+  // kill -<signal> <pid> -- track which demo pids "die" so kill -0 reflects it afterwards.
+  const killMatch = trimmed.match(/^kill\s+-(\d+|KILL|TERM|HUP)\s+(\d+)/);
+  if (killMatch) {
+    const [, sigRaw, pidStr] = killMatch;
+    const pid = parseInt(pidStr, 10);
+    const sig = sigRaw === "KILL" ? "9" : sigRaw === "TERM" ? "15" : sigRaw === "HUP" ? "1" : sigRaw;
+    if (sig === "9" || sig === "15") {
+      demoDeadPids.add(pid);
+    }
+    return { stdout: "", stderr: "", code: 0 };
+  }
+
+  // renice -n <value> -p <pid> -- demo always "succeeds" since there's no real process tree.
+  const reniceMatch = trimmed.match(/renice\s+-n\s+(-?\d+)\s+-p\s+(\d+)/);
+  if (reniceMatch) {
+    demoReniceValues[parseInt(reniceMatch[2], 10)] = parseInt(reniceMatch[1], 10);
+    return { stdout: `${reniceMatch[2]} (process ID) old priority 0, new priority ${reniceMatch[1]}\n`, stderr: "", code: 0 };
+  }
+
+  // ps -o ni= -p <pid>  -- reports back whatever renice last set, defaulting to 0.
+  const psNiceMatch = trimmed.match(/ps\s+-o\s+ni=\s+-p\s+(\d+)/);
+  if (psNiceMatch) {
+    const pid = parseInt(psNiceMatch[1], 10);
+    const nice = demoReniceValues[pid] ?? 0;
+    return { stdout: ` ${nice}\n`, stderr: "", code: 0 };
+  }
 
   if (trimmed.includes("uptime")) {
     const uptimeSec = Math.floor(Date.now() / 1000) % 864000;

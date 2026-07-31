@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { ServiceItem, SSHConfig } from "../types";
 import { INITIAL_SERVICES, execCommand } from "../services/api";
+import { useToast } from "../contexts/ToastContext";
 import {
   Boxes,
   Play,
@@ -21,6 +22,7 @@ interface ServicesViewProps {
 }
 
 export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
+  const toast = useToast();
   const [services, setServices] = useState<ServiceItem[]>(INITIAL_SERVICES);
   const [isLoading, setIsLoading] = useState(false);
   const [filterState, setFilterState] = useState<"all" | "active" | "failed">("all");
@@ -68,17 +70,40 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
     return matchesSearch;
   });
 
+  // Queries real systemd state instead of trusting the command's exit code -- systemctl can
+  // exit 0 even when the unit fails to actually reach the requested state (e.g. missing
+  // sudo rights, a crash-looping service, a masked unit).
+  const getServiceStatus = async (unit: string): Promise<{ active: string; sub: string }> => {
+    const res = await execCommand(server, `systemctl show ${unit} --property=ActiveState,SubState --value`);
+    const [active, sub] = res.stdout.trim().split("\n").map((s) => s.trim());
+    return { active: active || "unknown", sub: sub || "unknown" };
+  };
+
+  const actionLabels: Record<"start" | "stop" | "restart", string> = {
+    start: "запущена",
+    stop: "остановлена",
+    restart: "перезапущена",
+  };
+
   const handleServiceAction = async (service: ServiceItem, action: "start" | "stop" | "restart") => {
     await execCommand(server, `sudo systemctl ${action} ${service.unit}`);
+    // Small delay -- systemd needs a moment to settle into its final state, especially restart.
+    await new Promise((r) => setTimeout(r, 800));
+    const { active, sub } = await getServiceStatus(service.unit);
+
     setServices((prev) =>
-      prev.map((s) => {
-        if (s.name === service.name) {
-          if (action === "stop") return { ...s, active: "inactive", sub: "dead" };
-          return { ...s, active: "active", sub: "running" };
-        }
-        return s;
-      })
+      prev.map((s) => (s.name === service.name ? { ...s, active, sub } : s))
     );
+
+    const expectedActive = action === "stop" ? active !== "active" : active === "active";
+    if (expectedActive) {
+      toast.success(`Служба ${actionLabels[action]}`, `${service.unit} → ${active}/${sub}`);
+    } else {
+      toast.error(
+        `Не удалось выполнить ${action}`,
+        `${service.unit} осталась в состоянии ${active}/${sub} (проверь права sudo или sing-box/xray journalctl)`
+      );
+    }
   };
 
   const handleOpenJournal = async (service: ServiceItem) => {
@@ -86,10 +111,13 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
     setIsLoadingLogs(true);
     const res = await execCommand(server, `sudo journalctl -u ${service.unit} -n 30 --no-pager`);
     setIsLoadingLogs(false);
-    setJournalLogs(
-      res.stdout ||
-        `-- Logs begin at Wed 2026-07-28 00:00:00 UTC, end at Thu 2026-07-30 11:30:00 UTC --\nJul 30 11:25:10 ubuntu systemd[1]: Starting ${service.description}...\nJul 30 11:25:12 ubuntu systemd[1]: Started ${service.description}.\nJul 30 11:28:40 ubuntu ${service.name}[1204]: Service running on port 80/443. Worker process active.\n`
-    );
+    if (res.stdout && res.stdout.trim()) {
+      setJournalLogs(res.stdout);
+    } else if (res.stderr && res.stderr.trim()) {
+      setJournalLogs(`(журнал пуст, stderr) ${res.stderr}`);
+    } else {
+      setJournalLogs("Журнал пуст -- для этой службы пока нет записей в journalctl.");
+    }
   };
 
   return (
