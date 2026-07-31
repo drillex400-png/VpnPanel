@@ -40,7 +40,8 @@ import {
   Rocket,
   Trash2,
   UserPlus,
-  Users
+  Users,
+  ArrowLeftRight
 } from "lucide-react";
 
 interface VPNViewProps {
@@ -58,6 +59,7 @@ const VPN_PROTOCOLS: VPNProtocolCatalog[] = [
     defaultSni: "dl.google.com",
     securityRating: "ЭЛИТНЫЙ",
     obfuscationLevel: "DPI Proof",
+    transportLayer: "TCP",
     features: [
       "Обход блокировок по протоколу и SNI",
       "Маскировка под Google / Apple CDN",
@@ -78,6 +80,7 @@ const VPN_PROTOCOLS: VPNProtocolCatalog[] = [
     defaultSni: "swdist.apple.com",
     securityRating: "ЭЛИТНЫЙ",
     obfuscationLevel: "TLS Proxy",
+    transportLayer: "TCP",
     features: [
       "Работает на официальном ядре sing-box (SagerNet)",
       "Официальный inbound протокол type: anytls",
@@ -98,6 +101,7 @@ const VPN_PROTOCOLS: VPNProtocolCatalog[] = [
     defaultSni: "cloudflare.com",
     securityRating: "ВЫСОКИЙ",
     obfuscationLevel: "CDN Fast",
+    transportLayer: "TCP",
     features: [
       "Маршрутизация через Cloudflare CDN",
       "Защита IP-адреса сервера от блокировки",
@@ -116,6 +120,7 @@ const VPN_PROTOCOLS: VPNProtocolCatalog[] = [
     defaultSni: "shadowsocks.org",
     securityRating: "ВЫСОКИЙ",
     obfuscationLevel: "AEAD 2022",
+    transportLayer: "TCP+UDP",
     features: [
       "Минимальная задержка (Ping)",
       "Шифрование BLAKE3 + ChaCha20",
@@ -134,6 +139,7 @@ const VPN_PROTOCOLS: VPNProtocolCatalog[] = [
     defaultSni: "www.microsoft.com",
     securityRating: "ВЫСОКИЙ",
     obfuscationLevel: "TLS Proxy",
+    transportLayer: "TCP",
     features: [
       "Высокая скорость передачи данных",
       "gRPC транспозиция пакетов",
@@ -152,6 +158,7 @@ const VPN_PROTOCOLS: VPNProtocolCatalog[] = [
     defaultSni: "wireguard.org",
     securityRating: "ЭЛИТНЫЙ",
     obfuscationLevel: "UDP Stealth",
+    transportLayer: "UDP",
     features: [
       "AmneziaWG 2.0 Next-Gen Obfuscation",
       "Работа на уровне ядра Linux (Kernel dkms)",
@@ -794,7 +801,17 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
 
 
   // 3X-UI Full Xray Panel Fine-Tuning Parameters
-  const [xrayTransport, setXrayTransport] = useState<"grpc" | "tcp" | "ws" | "http" | "quic">("grpc");
+  // "http" (plain H2 transport) and "quic" were REMOVED from Xray-core entirely (confirmed
+  // against current upstream docs/source -- network:"http" was replaced by splithttp/XHTTP,
+  // and the standalone "quic" transport method no longer exists at all, replaced by the
+  // "hysteria" method which has a completely different config shape). Deploying either of
+  // the old option values would generate a config with an unrecognized `network` value --
+  // the pipeline's `xray run -test` validate_config step would catch it before touching the
+  // running service, so it wouldn't have broken anything live, but it was a guaranteed-to-fail
+  // dead option sitting in the UI. Replaced both with real splithttp (XHTTP) support, which is
+  // also the one non-raw/non-grpc transport that's actually REALITY-compatible per the docs'
+  // compatibility table.
+  const [xrayTransport, setXrayTransport] = useState<"grpc" | "tcp" | "ws" | "splithttp">("grpc");
   const [xraySecurity, setXraySecurity] = useState<"reality" | "tls" | "none">("reality");
   const [xrayFlow, setXrayFlow] = useState<"xtls-rprx-vision" | "xtls-rprx-vision-udp-443" | "none">("xtls-rprx-vision");
   const [xrayDest, setXrayDest] = useState<string>("dl.google.com:443");
@@ -839,6 +856,17 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   const [xrayGrpcMultiMode, setXrayGrpcMultiMode] = useState<boolean>(false);
   const [xrayWsPath, setXrayWsPath] = useState<string>("/ws");
   const [xrayWsHost, setXrayWsHost] = useState<string>("");
+  // WebSocket keepalive (real, documented field) -- 0/empty disables. Helps keep NAT/CGNAT
+  // mappings alive on mobile networks that otherwise silently drop idle TCP sessions.
+  const [xrayWsHeartbeat, setXrayWsHeartbeat] = useState<string>("");
+  // gRPC keepalive tuning (real, documented fields) -- optional, blank = library defaults.
+  const [xrayGrpcIdleTimeout, setXrayGrpcIdleTimeout] = useState<string>("");
+  // splithttp (XHTTP) -- shares the Path/Host fields above with WebSocket (same concept,
+  // different transport) but has its own mode + optional random padding range.
+  const [xraySplitHttpMode, setXraySplitHttpMode] = useState<"auto" | "packet-up" | "stream-up" | "stream-one">("auto");
+  const [xraySplitHttpPaddingEnabled, setXraySplitHttpPaddingEnabled] = useState<boolean>(false);
+  const [xraySplitHttpPaddingFrom, setXraySplitHttpPaddingFrom] = useState<string>("100");
+  const [xraySplitHttpPaddingTo, setXraySplitHttpPaddingTo] = useState<string>("1000");
   const [xraySsCipher, setXraySsCipher] = useState<"2022-blake3-chacha20-poly1305" | "2022-blake3-aes-128-gcm" | "2022-blake3-aes-256-gcm">("2022-blake3-chacha20-poly1305");
 
   // 3X-UI Traffic Sniffing
@@ -1018,8 +1046,10 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
 
   // 3X-UI Options Conflict Resolution
   useEffect(() => {
-    // REALITY does not support WebSocket or QUIC
-    if ((xrayTransport === "ws" || xrayTransport === "quic") && xraySecurity === "reality") {
+    // REALITY does not support WebSocket (per the official transport-compatibility table).
+    // splithttp (XHTTP) IS explicitly REALITY-compatible -- 'XHTTP: Beyond REALITY' is even
+    // the feature's own name upstream -- so it must NOT be force-switched away.
+    if (xrayTransport === "ws" && xraySecurity === "reality") {
       setXraySecurity("tls");
     }
     // XTLS Vision Flow strictly requires TCP and TLS/REALITY
@@ -1097,6 +1127,15 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
       return;
     }
 
+    if (xrayTransport === "splithttp" && xraySplitHttpPaddingEnabled) {
+      const from = parseInt(xraySplitHttpPaddingFrom.trim(), 10);
+      const to = parseInt(xraySplitHttpPaddingTo.trim(), 10);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to < 0 || from > to) {
+        toast.error("Некорректный диапазон xPaddingBytes", "'От' должно быть <= 'До', оба неотрицательные целые числа.");
+        return;
+      }
+    }
+
     // Generate credentials
     const newUuid = window.crypto?.randomUUID ? window.crypto.randomUUID() : "a" + Math.random().toString(36).substring(2, 10) + "-4f12-9012-" + Math.random().toString(36).substring(2, 12);
     let newPub = "pbk_" + Math.random().toString(36).substring(2, 15);
@@ -1160,6 +1199,11 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
 
     // Generate protocol specific standard link
     const actualFlow = xrayTransport === "tcp" ? xrayFlow : "none";
+    // Xray-core's internal JSON `network` value is "splithttp", but the client share-link
+    // ecosystem (v2rayN, NekoBox, Shadowrocket, sing-box clients, etc.) universally expects
+    // `type=xhttp` in the URI for this transport -- they're the same wire protocol, just a
+    // naming split between Xray-core's own config schema and the community link convention.
+    const uriTransportType = (xrayTransport as string) === "splithttp" ? "xhttp" : xrayTransport;
     const safeHost = hostName.includes(":") ? `[${hostName}]` : hostName;
     // Server/client names are free text (can contain spaces, parens, cyrillic, etc.) --
     // URI fragments must be percent-encoded per RFC 3986, or strict client parsers
@@ -1178,15 +1222,16 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
       link = `ss://${btoa(xraySsCipher + ":" + ss2022Password)}@${safeHost}:${deployPort}#${encName(`${server.name}-${deployClientName}`)}`;
     } else if (selectedDeployProtocol.id === "xray-vmess-ws") {
       const vmessTls = xraySecurity === "none" ? "" : xraySecurity;
-      link = `vmess://${btoa(JSON.stringify({ v: "2", ps: `${server.name}-${deployClientName}`, add: safeHost, port: deployPort, id: newUuid, aid: 0, net: xrayTransport, type: "none", host: xrayWsHost || deploySni, path: xrayWsPath, tls: vmessTls, sni: deploySni }))}`;
+      link = `vmess://${btoa(JSON.stringify({ v: "2", ps: `${server.name}-${deployClientName}`, add: safeHost, port: deployPort, id: newUuid, aid: 0, net: uriTransportType, type: "none", host: xrayWsHost || deploySni, path: xrayWsPath, tls: vmessTls, sni: deploySni, ...(xrayTransport === "splithttp" ? { mode: xraySplitHttpMode } : {}) }))}`;
     } else if (selectedDeployProtocol.id === "xray-trojan-grpc") {
-      let query = `type=${xrayTransport}&security=${xraySecurity}&sni=${deploySni}`;
+      let query = `type=${uriTransportType}&security=${xraySecurity}&sni=${deploySni}`;
       if (xrayTransport === "grpc") query += `&serviceName=${xrayGrpcServiceName}`;
       if (xrayTransport === "ws") query += `&path=${encodeURIComponent(xrayWsPath)}${xrayWsHost ? `&host=${encodeURIComponent(xrayWsHost)}` : ""}`;
+      if (xrayTransport === "splithttp") query += `&path=${encodeURIComponent(xrayWsPath)}${xrayWsHost ? `&host=${encodeURIComponent(xrayWsHost)}` : ""}&mode=${xraySplitHttpMode}`;
       link = `trojan://${newUuid}@${safeHost}:${deployPort}?${query}#${encName(`${server.name}-${deployClientName}`)}`;
     } else {
       // VLESS REALITY / VLESS TLS
-      let query = `type=${xrayTransport}&security=${xraySecurity}&fp=${utlsFingerprint}&sni=${deploySni}`;
+      let query = `type=${uriTransportType}&security=${xraySecurity}&fp=${utlsFingerprint}&sni=${deploySni}`;
       if (xraySecurity === "reality") {
         query += `&pbk=${xrayPublicKey || newPub}&sid=${xrayShortId}`;
       }
@@ -1197,6 +1242,8 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
         query += `&serviceName=${xrayGrpcServiceName}`;
       } else if (xrayTransport === "ws") {
         query += `&path=${encodeURIComponent(xrayWsPath)}${xrayWsHost ? `&host=${encodeURIComponent(xrayWsHost)}` : ""}`;
+      } else if (xrayTransport === "splithttp") {
+        query += `&path=${encodeURIComponent(xrayWsPath)}${xrayWsHost ? `&host=${encodeURIComponent(xrayWsHost)}` : ""}&mode=${xraySplitHttpMode}`;
       }
       link = `vless://${newUuid}@${safeHost}:${deployPort}?${query}#${encName(`${server.name}-${deployClientName}`)}`;
     }
@@ -1212,8 +1259,14 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
       const isAnytls = selectedDeployProtocol.id === "anytls";
       const isAwg = selectedDeployProtocol.id === "amnezia-wg";
       const isRealityProtocol = selectedDeployProtocol.id === "xray-vless-reality";
-      const isUdp2 = isAwg;
-      const proto2 = isUdp2 ? "udp" : "tcp";
+      // Which L4 protocol(s) actually need a firewall hole. This was previously always a
+      // single tcp/udp choice (isAwg ? "udp" : "tcp") -- which silently broke Shadowsocks-2022:
+      // its own inbound settings explicitly declare `network: "tcp,udp"` (real UDP relay, used
+      // for games/voice per its own catalog description), but the deploy pipeline only ever
+      // opened the TCP port for it. Any UDP traffic through it was being dropped by ufw with
+      // no error anywhere -- a real "looks deployed, partially doesn't work" bug.
+      const isSsProtocol2 = selectedDeployProtocol.id === "shadowsocks-2022";
+      const protosToOpen: ("tcp" | "udp")[] = isAwg ? ["udp"] : isSsProtocol2 ? ["tcp", "udp"] : ["tcp"];
 
       // Single source of truth (see getProtocolRuntimeInfo above) -- keeps this deploy
       // pipeline and the add/remove-client pipelines permanently in sync on paths/unit name.
@@ -1232,7 +1285,8 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
       let awgClientPriv = "";
       let awgClientPub = "";
       let awgEgressIface = "eth0";
-      let portRuleExisted = true; // default true = safest (never delete a rule we didn't add)
+      // Default true = safest (never delete a rule we didn't add) -- one flag per proto in protosToOpen.
+      let portRulesExisted: boolean[] = protosToOpen.map(() => true);
       let serviceRestartAttempted = false;
 
       const buildAwgServerConf = (serverPriv: string, clientPub: string, egressIface: string) => {
@@ -1383,9 +1437,31 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
           };
         }
         if (xrayTransport === "grpc") {
-          streamSettings.grpcSettings = { serviceName: xrayGrpcServiceName || "grpc-vless", multiMode: xrayGrpcMultiMode };
+          streamSettings.grpcSettings = {
+            serviceName: xrayGrpcServiceName || "grpc-vless",
+            multiMode: xrayGrpcMultiMode,
+            ...(xrayGrpcIdleTimeout.trim() && /^\d+$/.test(xrayGrpcIdleTimeout.trim()) ? { idle_timeout: parseInt(xrayGrpcIdleTimeout.trim(), 10) } : {})
+          };
         } else if (xrayTransport === "ws") {
-          streamSettings.wsSettings = { path: xrayWsPath || "/ws", headers: xrayWsHost ? { Host: xrayWsHost } : {} };
+          streamSettings.wsSettings = {
+            path: xrayWsPath || "/ws",
+            headers: xrayWsHost ? { Host: xrayWsHost } : {},
+            ...(xrayWsHeartbeat.trim() && /^\d+$/.test(xrayWsHeartbeat.trim()) ? { heartbeatPeriod: parseInt(xrayWsHeartbeat.trim(), 10) } : {})
+          };
+        } else if (xrayTransport === "splithttp") {
+          // network:"splithttp" is Xray-core's real internal name for what the ecosystem
+          // (share-links, other panels) markets as "XHTTP" -- both host/path are shared with
+          // the WS fields above (same concept, kept as one UI section) since XHTTP is HTTP-based
+          // just like WS. mode defaults to "auto" (server negotiates); xPaddingBytes is a real,
+          // documented random-padding-range knob, off by default so behavior is unsurprising.
+          streamSettings.splithttpSettings = {
+            path: xrayWsPath || "/xhttp",
+            host: xrayWsHost || undefined,
+            mode: xraySplitHttpMode,
+            ...(xraySplitHttpPaddingEnabled && /^\d+$/.test(xraySplitHttpPaddingFrom.trim()) && /^\d+$/.test(xraySplitHttpPaddingTo.trim())
+              ? { xPaddingBytes: { from: parseInt(xraySplitHttpPaddingFrom.trim(), 10), to: parseInt(xraySplitHttpPaddingTo.trim(), 10) } }
+              : {})
+          };
         }
 
         const routingRules: any[] = [];
@@ -1433,18 +1509,20 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
           grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.d/99-vpn.conf 2>/dev/null || echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.d/99-vpn.conf >/dev/null
           sudo sysctl -p /etc/sysctl.d/99-vpn.conf 2>/dev/null || true
           ` : ""}
-          sudo ufw status | grep -q "${deployPort}/${proto2}" && echo "PORT_RULE_EXISTED:YES" || echo "PORT_RULE_EXISTED:NO"
-          sudo ufw allow ${deployPort}/${proto2} 2>/dev/null || true
+          ${protosToOpen.map((p) => `sudo ufw status | grep -q "${deployPort}/${p}" && echo "PORT_RULE_EXISTED_${p.toUpperCase()}:YES" || echo "PORT_RULE_EXISTED_${p.toUpperCase()}:NO"`).join("\n          ")}
+          ${protosToOpen.map((p) => `sudo ufw allow ${deployPort}/${p} 2>/dev/null || true`).join("\n          ")}
           command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 && echo DEPS_OK || echo DEPS_MISSING
         `),
         verify: (res) => {
-          portRuleExisted = res.stdout.includes("PORT_RULE_EXISTED:YES");
+          portRulesExisted = protosToOpen.map((p) => res.stdout.includes(`PORT_RULE_EXISTED_${p.toUpperCase()}:YES`));
           if (!res.stdout.includes("DEPS_OK")) return `Не удалось установить базовые зависимости (curl/jq/openssl) -- проверь доступ apt на сервере.${res.stderr ? ` (${res.stderr.slice(-200)})` : ""}`;
           return null;
         },
         rollback: async () => {
-          if (!portRuleExisted) {
-            await execCommand(server, `sudo ufw delete allow ${deployPort}/${proto2} 2>/dev/null || true`);
+          for (let i = 0; i < protosToOpen.length; i++) {
+            if (!portRulesExisted[i]) {
+              await execCommand(server, `sudo ufw delete allow ${deployPort}/${protosToOpen[i]} 2>/dev/null || true`);
+            }
           }
         },
       });
@@ -2614,6 +2692,28 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                     <span className="flex items-center gap-1"><Globe className="w-3 h-3 text-fuchsia-400" /> SNI: <strong className="text-slate-200 truncate max-w-[100px]">{protocol.defaultSni}</strong></span>
                   </div>
 
+                  {/* L4 transport badge -- real, verified against what the deploy pipeline actually
+                      opens on the firewall + what the service listens on (not decorative): TCP-only
+                      services silently drop UDP traffic (games/voice) and vice versa if a client
+                      assumes the wrong one, so this is worth being explicit and visually distinct about. */}
+                  <div className="flex items-center gap-1.5">
+                    <span className={`inline-flex items-center gap-1 text-[9px] font-black tracking-wider uppercase px-2 py-1 rounded-lg border ${
+                      protocol.transportLayer === "UDP"
+                        ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                        : protocol.transportLayer === "TCP+UDP"
+                        ? "bg-gradient-to-r from-sky-500/10 to-amber-500/10 text-sky-300 border-sky-500/30"
+                        : "bg-sky-500/10 text-sky-400 border-sky-500/30"
+                    }`}>
+                      <ArrowLeftRight className="w-2.5 h-2.5" />
+                      {protocol.transportLayer}
+                    </span>
+                    <span className="text-[9px] text-slate-500 font-mono">
+                      {protocol.transportLayer === "UDP" && "чистый UDP-туннель"}
+                      {protocol.transportLayer === "TCP+UDP" && "TCP управление + UDP relay (игры/голос)"}
+                      {protocol.transportLayer === "TCP" && "поверх TCP (маскировка под HTTPS)"}
+                    </span>
+                  </div>
+
                   <button
                     onClick={() => {
                       setSelectedDeployProtocol(protocol);
@@ -2672,11 +2772,27 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                       <div className={`absolute -bottom-1 -right-1 w-3 h-3 border-2 border-slate-900 rounded-full ${service.status === "active" ? "bg-violet-500 animate-pulse" : "bg-rose-500"}`} />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-sm sm:text-base font-bold text-white tracking-wide">{service.name}</h3>
                         <span className="text-[9px] font-mono bg-slate-950 text-slate-400 border border-slate-800 px-1.5 py-0.5 rounded-md">
                           {service.version}
                         </span>
+                        {(() => {
+                          const proto = VPN_PROTOCOLS.find((p) => p.id === service.protocolId);
+                          if (!proto) return null;
+                          return (
+                            <span className={`inline-flex items-center gap-1 text-[9px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded-md border ${
+                              proto.transportLayer === "UDP"
+                                ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                                : proto.transportLayer === "TCP+UDP"
+                                ? "bg-gradient-to-r from-sky-500/10 to-amber-500/10 text-sky-300 border-sky-500/30"
+                                : "bg-sky-500/10 text-sky-400 border-sky-500/30"
+                            }`}>
+                              <ArrowLeftRight className="w-2.5 h-2.5" />
+                              {proto.transportLayer}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center gap-2 text-xs font-mono text-slate-400 mt-0.5">
                         <span className="text-slate-300 font-bold">Порт: {service.port}</span>
@@ -2994,8 +3110,18 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                     <RocketIcon className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-sm sm:text-base font-bold text-white">
-                      Авто-деплой: {selectedDeployProtocol.name}
+                    <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 flex-wrap">
+                      <span>Авто-деплой: {selectedDeployProtocol.name}</span>
+                      <span className={`inline-flex items-center gap-1 text-[9px] font-black tracking-wider uppercase px-2 py-0.5 rounded-lg border ${
+                        selectedDeployProtocol.transportLayer === "UDP"
+                          ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                          : selectedDeployProtocol.transportLayer === "TCP+UDP"
+                          ? "bg-gradient-to-r from-sky-500/10 to-amber-500/10 text-sky-300 border-sky-500/30"
+                          : "bg-sky-500/10 text-sky-400 border-sky-500/30"
+                      }`}>
+                        <ArrowLeftRight className="w-2.5 h-2.5" />
+                        {selectedDeployProtocol.transportLayer}
+                      </span>
                     </h3>
                     <p className="text-[11px] text-slate-400">
                       Настройка параметров запуска на сервере {server.name}
@@ -3584,6 +3710,23 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                                 </div>
                                 <span className="text-indigo-400 text-[8px] bg-indigo-500/10 px-1 py-0.5 rounded">TLS</span>
                               </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setXrayTransport("splithttp");
+                                  setXraySecurity("reality");
+                                  setXrayWsPath("/xhttp");
+                                  setXraySplitHttpMode("auto");
+                                }}
+                                className="bg-slate-950 hover:bg-violet-950/40 text-left p-1.5 rounded-lg border border-slate-800 hover:border-violet-500/40 transition flex items-center justify-between"
+                              >
+                                <div>
+                                  <div className="font-bold text-white">🌐 XHTTP + REALITY</div>
+                                  <div className="text-slate-400">HTTP/2+3, новейший транспорт</div>
+                                </div>
+                                <span className="text-emerald-400 text-[8px] bg-emerald-500/10 px-1 py-0.5 rounded">New</span>
+                              </button>
                             </div>
                           </div>
 
@@ -3596,10 +3739,9 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-violet-500 text-[11px]"
                               >
                                 <option value="grpc">gRPC (Ultra stealth stream)</option>
-                                <option value="tcp">TCP (Standard Direct)</option>
+                                <option value="tcp">TCP / RAW (Standard Direct)</option>
                                 <option value="ws">WebSocket (Cloudflare CDN support)</option>
-                                <option value="http">HTTP/2 (H2 Multiplex)</option>
-                                <option value="quic">QUIC (UDP Stream)</option>
+                                <option value="splithttp">XHTTP / SplitHTTP (HTTP/2+3, REALITY-совместим)</option>
                               </select>
                             </div>
 
@@ -3849,38 +3991,114 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                           )}
 
                           {xrayTransport === "grpc" && (
-                            <div>
-                              <label className="text-slate-400 font-semibold mb-1 block">gRPC Service Name</label>
-                              <input
-                                type="text"
-                                value={xrayGrpcServiceName}
-                                onChange={(e) => setXrayGrpcServiceName(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-[11px]"
-                              />
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-slate-400 font-semibold mb-1 block">gRPC Service Name</label>
+                                <input
+                                  type="text"
+                                  value={xrayGrpcServiceName}
+                                  onChange={(e) => setXrayGrpcServiceName(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-[11px]"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-slate-400 font-semibold mb-1 block">Idle Timeout (сек, необяз.)</label>
+                                <input
+                                  type="text"
+                                  value={xrayGrpcIdleTimeout}
+                                  onChange={(e) => setXrayGrpcIdleTimeout(e.target.value)}
+                                  placeholder="60"
+                                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-[11px]"
+                                />
+                              </div>
                             </div>
                           )}
 
-                          {xrayTransport === "ws" && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-slate-400 font-semibold mb-1 block">WebSocket Path</label>
-                                <input
-                                  type="text"
-                                  value={xrayWsPath}
-                                  onChange={(e) => setXrayWsPath(e.target.value)}
-                                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-[11px]"
-                                />
+                          {(xrayTransport === "ws" || xrayTransport === "splithttp") && (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-slate-400 font-semibold mb-1 block">{xrayTransport === "ws" ? "WebSocket Path" : "XHTTP Path"}</label>
+                                  <input
+                                    type="text"
+                                    value={xrayWsPath}
+                                    onChange={(e) => setXrayWsPath(e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-[11px]"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-slate-400 font-semibold mb-1 block">{xrayTransport === "ws" ? "WS Host Header" : "XHTTP Host Header"}</label>
+                                  <input
+                                    type="text"
+                                    value={xrayWsHost}
+                                    onChange={(e) => setXrayWsHost(e.target.value)}
+                                    placeholder="cloudflare.com"
+                                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-[11px]"
+                                  />
+                                </div>
                               </div>
-                              <div>
-                                <label className="text-slate-400 font-semibold mb-1 block">WS Host Header</label>
-                                <input
-                                  type="text"
-                                  value={xrayWsHost}
-                                  onChange={(e) => setXrayWsHost(e.target.value)}
-                                  placeholder="cloudflare.com"
-                                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-[11px]"
-                                />
-                              </div>
+
+                              {xrayTransport === "ws" && (
+                                <div>
+                                  <label className="text-slate-400 font-semibold mb-1 block">Heartbeat Period (сек, необяз. -- keepalive для мобильных сетей)</label>
+                                  <input
+                                    type="text"
+                                    value={xrayWsHeartbeat}
+                                    onChange={(e) => setXrayWsHeartbeat(e.target.value)}
+                                    placeholder="0 = выключено"
+                                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-[11px]"
+                                  />
+                                </div>
+                              )}
+
+                              {xrayTransport === "splithttp" && (
+                                <div className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-xl space-y-2">
+                                  <div>
+                                    <label className="text-slate-400 font-semibold mb-1 block text-[10px]">Mode</label>
+                                    <select
+                                      value={xraySplitHttpMode}
+                                      onChange={(e: any) => setXraySplitHttpMode(e.target.value)}
+                                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono text-[11px]"
+                                    >
+                                      <option value="auto">auto (сервер сам согласует)</option>
+                                      <option value="packet-up">packet-up (каждый пакет -- отдельный POST)</option>
+                                      <option value="stream-up">stream-up (один долгий POST)</option>
+                                      <option value="stream-one">stream-one (один TCP-коннект на оба направления)</option>
+                                    </select>
+                                  </div>
+                                  <label className="flex items-center gap-2 text-[10px] text-slate-300 font-semibold cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={xraySplitHttpPaddingEnabled}
+                                      onChange={(e) => setXraySplitHttpPaddingEnabled(e.target.checked)}
+                                      className="accent-violet-500"
+                                    />
+                                    <span>xPaddingBytes -- случайный паддинг запроса (от/до байт)</span>
+                                  </label>
+                                  {xraySplitHttpPaddingEnabled && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div>
+                                        <label className="text-slate-400 block mb-0.5 text-[10px]">От (байт)</label>
+                                        <input
+                                          type="text"
+                                          value={xraySplitHttpPaddingFrom}
+                                          onChange={(e) => setXraySplitHttpPaddingFrom(e.target.value)}
+                                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono text-[11px]"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-slate-400 block mb-0.5 text-[10px]">До (байт)</label>
+                                        <input
+                                          type="text"
+                                          value={xraySplitHttpPaddingTo}
+                                          onChange={(e) => setXraySplitHttpPaddingTo(e.target.value)}
+                                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono text-[11px]"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
 

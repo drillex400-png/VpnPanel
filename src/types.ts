@@ -152,6 +152,13 @@ export interface VPNProtocolCatalog {
   defaultSni: string;
   securityRating: "ЭЛИТНЫЙ" | "ВЫСОКИЙ" | "СЕДНИЙ";
   obfuscationLevel: "DPI Proof" | "TLS Proxy" | "CDN Fast" | "AEAD 2022" | "UDP Stealth";
+  // Real L4 transport actually opened on the firewall + listened on by the service -- not a
+  // cosmetic label. "TCP+UDP" only for Shadowsocks-2022 (its inbound network genuinely is
+  // tcp,udp -- see protosToOpen in VPNView, which now actually opens both). Xray-family
+  // protocols (REALITY/VMess-WS/Trojan-gRPC) only ever expose TCP-based transport methods
+  // (raw/grpc/ws/splithttp all listen on one TCP socket), so they're always "TCP" no matter
+  // which of those the user picks in the advanced panel.
+  transportLayer: "TCP" | "UDP" | "TCP+UDP";
   features: string[];
   recommendedApps: string[];
   gradient: string;
