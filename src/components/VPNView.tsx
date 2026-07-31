@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { SSHConfig, VPNProtocolCatalog, InstalledVPNService, VPNAssistantMessage } from "../types";
+import { SSHConfig, VPNProtocolCatalog, InstalledVPNService, VPNAssistantMessage, VPNClientEntry, VPNProtocolId } from "../types";
 import { execCommand, authFetch } from "../services/api";
 import { useToast } from "../contexts/ToastContext";
 import { runDeployPipeline, DeployStep } from "../utils/deployPipeline";
@@ -36,7 +36,10 @@ import {
   Activity,
   Sliders,
   RefreshCw,
-  Rocket
+  Rocket,
+  Trash2,
+  UserPlus,
+  Users
 } from "lucide-react";
 
 interface VPNViewProps {
@@ -191,7 +194,16 @@ const DEMO_INSTALLED_SERVICES: InstalledVPNService[] = [
     activeClientsCount: 3,
     installedAt: "2026-07-26",
     version: "v1.8.24",
-    configPath: "/etc/xray/config.json",
+    configPath: "/usr/local/etc/xray/config.json",
+    clients: [
+      {
+        id: "c-demo-1",
+        name: "Client-Device-01",
+        uuid: "e89c4a12-7b3e-4f12-9012-a1b2c3d4e5f6",
+        clientLink: "vless://e89c4a12-7b3e-4f12-9012-a1b2c3d4e5f6@demo.server.com:443?type=grpc&security=reality&pbk=x8F2k9L1mN3pQ5rT7vW9xZ2aC4eG6iI8kM0oQ2sU4wY&fp=chrome&sni=dl.google.com#Ubuntu-VLESS-REALITY",
+        createdAt: "2026-07-26T00:00:00.000Z",
+      },
+    ],
   },
   {
     id: "vpn-inst-2",
@@ -209,6 +221,15 @@ const DEMO_INSTALLED_SERVICES: InstalledVPNService[] = [
     installedAt: "2026-07-29",
     version: "sing-box (Official)",
     configPath: "/etc/sing-box/config.json",
+    clients: [
+      {
+        id: "c-demo-2",
+        name: "Client-Device-01",
+        uuid: "3f9a12b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b",
+        clientLink: "anytls://3f9a12b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b@demo.server.com:8443?sni=swdist.apple.com#Ubuntu-AnyTLS-sing-box",
+        createdAt: "2026-07-29T00:00:00.000Z",
+      },
+    ],
   },
 ];
 
@@ -309,6 +330,88 @@ ss -tn state established "( sport = :${port} )" 2>/dev/null | tail -n +2 | wc -l
   return blocks.join("\n");
 };
 
+// ---- Shared protocol runtime info: single source of truth for systemd unit name + real
+// config file path per protocol, used by BOTH the initial deploy pipeline and the
+// add/remove-client pipelines so they can never drift apart. (This also fixes a
+// pre-existing bug: InstalledVPNService.configPath used to be hardcoded as
+// /etc/${protocolId}/config.json, which never matched the REAL path any protocol's deploy
+// pipeline actually wrote to -- e.g. Xray really lives at /usr/local/etc/xray/config.json.) --
+const getProtocolRuntimeInfo = (
+  protocolId: VPNProtocolId
+): { serviceName: string; primaryConfigPath: string; secondaryConfigPath: string; configFormat: "json" | "ini" } => {
+  const isXrayFamily = protocolId.includes("xray") || protocolId === "shadowsocks-2022";
+  if (isXrayFamily) {
+    return { serviceName: "xray", primaryConfigPath: "/usr/local/etc/xray/config.json", secondaryConfigPath: "/etc/xray/config.json", configFormat: "json" };
+  }
+  if (protocolId === "anytls") {
+    return { serviceName: "sing-box", primaryConfigPath: "/etc/sing-box/config.json", secondaryConfigPath: "", configFormat: "json" };
+  }
+  if (protocolId === "amnezia-wg") {
+    return { serviceName: "awg-quick@awg0", primaryConfigPath: "/etc/amnezia/amneziawg/awg0.conf", secondaryConfigPath: "/etc/wireguard/awg0.conf", configFormat: "ini" };
+  }
+  return { serviceName: protocolId, primaryConfigPath: `/etc/${protocolId}/config.json`, secondaryConfigPath: "", configFormat: "json" };
+};
+
+// Cryptographically secure random key generator (Web Crypto, not Math.random) -- shared by
+// initial deploy AND add-client flows so every generated secret goes through the same path.
+const generateSecureBase64Key = (bytes: number, urlSafe: boolean = false): string => {
+  const array = new Uint8Array(bytes);
+  window.crypto.getRandomValues(array);
+  let binary = "";
+  for (let i = 0; i < array.byteLength; i++) binary += String.fromCharCode(array[i]);
+  let b64 = btoa(binary);
+  if (urlSafe) b64 = b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return b64;
+};
+
+// Builds an AmneziaWG client .conf -- parameterized (unlike the old inline version that
+// hardcoded Address = 10.29.29.2/32, which only happened to be correct for a service's very
+// first client). Used by both the initial deploy AND by "add client" for every subsequent
+// peer, each with its own allocated /32 address.
+const buildAwgClientConfShared = (opts: {
+  clientPriv: string;
+  serverPub: string;
+  clientAddress: string;
+  endpointHost: string;
+  endpointPort: number;
+  awgVersion: "1.0" | "2.0";
+  awgJc: number | string; awgJmin: number | string; awgJmax: number | string;
+  awgS1: number | string; awgS2: number | string; awgS3: number | string; awgS4: number | string;
+  awgH1: number | string; awgH2: number | string; awgH3: number | string; awgH4: number | string;
+}): string => {
+  const lines = [
+    "[Interface]",
+    `PrivateKey = ${opts.clientPriv}`,
+    `Address = ${opts.clientAddress}`,
+    "DNS = 1.1.1.1, 1.0.0.1",
+    `Jc = ${opts.awgJc}`,
+    `Jmin = ${opts.awgJmin}`,
+    `Jmax = ${opts.awgJmax}`,
+    `S1 = ${opts.awgS1}`,
+    `S2 = ${opts.awgS2}`,
+  ];
+  if (opts.awgVersion === "2.0") lines.push(`S3 = ${opts.awgS3}`, `S4 = ${opts.awgS4}`);
+  lines.push(
+    `H1 = ${opts.awgH1}`,
+    `H2 = ${opts.awgH2}`,
+    `H3 = ${opts.awgH3}`,
+    `H4 = ${opts.awgH4}`,
+    "",
+    "[Peer]",
+    `PublicKey = ${opts.serverPub}`,
+    `Endpoint = ${opts.endpointHost}:${opts.endpointPort}`,
+    "AllowedIPs = 0.0.0.0/0, ::/0",
+    "PersistentKeepalive = 25"
+  );
+  return lines.join("\n");
+};
+
+// Shadowsocks-2022 in Xray-core was audited previously and found unstable in true
+// multi-user mode across all supported ciphers -- kept intentionally single-user. See
+// VPNClientEntry doc comment in types.ts.
+const SS2022_NO_MULTI_CLIENT_REASON =
+  "Shadowsocks-2022 в Xray-core работает только в single-user режиме (проверено ранее: многопользовательский режим нестабилен на части шифров) -- мультиклиент недоступен для этого протокола.";
+
 export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   const toast = useToast();
   // Installed VPNs State -- seeded per-server below (demo seed only for the demo server;
@@ -379,9 +482,20 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   const [deployLogs, setDeployLogs] = useState<string[]>([]);
   const [deploySuccessService, setDeploySuccessService] = useState<InstalledVPNService | null>(null);
 
-  // QR Code & Copy link Modal
-  const [qrModalService, setQrModalService] = useState<InstalledVPNService | null>(null);
+  // QR Code & Copy link Modal -- shows a single client's link/QR. Loosely typed (not the
+  // full InstalledVPNService) since it now needs to open for any ONE client out of a
+  // service's client list, not just "the" service-level link.
+  const [qrModalService, setQrModalService] = useState<{ name: string; uuid: string; clientLink: string } | null>(null);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
+
+  // Multi-client management: add/remove a client (peer/user) on an already-deployed
+  // service, without touching the rest of its live config.
+  const [addClientTarget, setAddClientTarget] = useState<InstalledVPNService | null>(null);
+  const [newClientName, setNewClientName] = useState<string>("");
+  const [isMutatingClients, setIsMutatingClients] = useState<boolean>(false);
+  const [clientMutationLogs, setClientMutationLogs] = useState<string[]>([]);
+  const [addClientResult, setAddClientResult] = useState<VPNClientEntry | null>(null);
+  const [removingClient, setRemovingClient] = useState<{ service: InstalledVPNService; client: VPNClientEntry } | null>(null);
 
   // AI Assistant State ("МАСТЕР В СФЕРЕ ВПН")
   const [activeTab, setActiveTab] = useState<"catalog" | "installed" | "ai-expert">("catalog");
@@ -586,23 +700,12 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
 
     // Generate credentials
     const newUuid = window.crypto?.randomUUID ? window.crypto.randomUUID() : "a" + Math.random().toString(36).substring(2, 10) + "-4f12-9012-" + Math.random().toString(36).substring(2, 12);
-    const newPub = "pbk_" + Math.random().toString(36).substring(2, 15);
+    let newPub = "pbk_" + Math.random().toString(36).substring(2, 15);
     const hostName = server.isDemo ? "demo.server.com" : server.host;
 
-    // Cryptographic key generation for specific protocols
-    const generateBase64Key = (bytes: number, urlSafe: boolean = false) => {
-      const array = new Uint8Array(bytes);
-      window.crypto.getRandomValues(array);
-      let binary = "";
-      for (let i = 0; i < array.byteLength; i++) {
-        binary += String.fromCharCode(array[i]);
-      }
-      let b64 = btoa(binary);
-      if (urlSafe) {
-        b64 = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-      }
-      return b64;
-    };
+    // Cryptographic key generation for specific protocols (delegates to the shared
+    // module-level implementation also used by the add-client flow)
+    const generateBase64Key = (bytes: number, urlSafe: boolean = false) => generateSecureBase64Key(bytes, urlSafe);
 
     const isSs2022 = selectedDeployProtocol.id === "shadowsocks-2022";
     const ss2022Bytes = xraySsCipher.includes("128") ? 16 : 32;
@@ -621,35 +724,16 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     // and the placeholder here is ONLY ever shown for the demo server, which never deploys.
     const awgDemoClientPriv = generateBase64Key(32);
     const awgDemoServerPub = generateBase64Key(32);
-    const buildAwgClientConf = (clientPriv: string, serverPub: string) => {
-      const lines = [
-        "[Interface]",
-        `PrivateKey = ${clientPriv}`,
-        "Address = 10.29.29.2/32",
-        "DNS = 1.1.1.1, 1.0.0.1",
-        `Jc = ${awgJc}`,
-        `Jmin = ${awgJmin}`,
-        `Jmax = ${awgJmax}`,
-        `S1 = ${awgS1}`,
-        `S2 = ${awgS2}`,
-      ];
-      if (awgVersion === "2.0") {
-        lines.push(`S3 = ${awgS3}`, `S4 = ${awgS4}`);
-      }
-      lines.push(
-        `H1 = ${awgH1}`,
-        `H2 = ${awgH2}`,
-        `H3 = ${awgH3}`,
-        `H4 = ${awgH4}`,
-        "",
-        "[Peer]",
-        `PublicKey = ${serverPub}`,
-        `Endpoint = ${safeHost}:${deployPort}`,
-        "AllowedIPs = 0.0.0.0/0, ::/0",
-        "PersistentKeepalive = 25"
-      );
-      return lines.join("\n");
-    };
+    // Client's own address is hardcoded to .2/32 here because this ALWAYS builds the
+    // service's very first client during initial deploy -- subsequent clients (added later
+    // via "add client") get their own allocated address from handleAddClient instead, via
+    // the shared buildAwgClientConfShared() with a real, non-colliding address.
+    const buildAwgClientConf = (clientPriv: string, serverPub: string) =>
+      buildAwgClientConfShared({
+        clientPriv, serverPub, clientAddress: "10.29.29.2/32",
+        endpointHost: safeHost, endpointPort: deployPort, awgVersion,
+        awgJc, awgJmin, awgJmax, awgS1, awgS2, awgS3, awgS4, awgH1, awgH2, awgH3, awgH4,
+      });
 
     setIsDeploying(true);
     setDeployLogs([`[SSH] Подключение к серверу ${server.username}@${server.host}:${server.port}...`]);
@@ -734,25 +818,12 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
       const isUdp2 = isAwg;
       const proto2 = isUdp2 ? "udp" : "tcp";
 
-      let configPathPrefix = "/etc";
-      let serviceDir = selectedDeployProtocol.id;
-      let serviceName: string = selectedDeployProtocol.id;
-      let configFile = "config.json";
-      if (isXrayFamily) {
-        configPathPrefix = "/usr/local/etc";
-        serviceDir = "xray";
-        serviceName = "xray";
-      } else if (isAnytls) {
-        configPathPrefix = "/etc";
-        serviceDir = "sing-box";
-        serviceName = "sing-box";
-      } else if (isAwg) {
-        serviceDir = "amnezia/amneziawg";
-        serviceName = "awg-quick@awg0";
-        configFile = "awg0.conf";
-      }
-      const confPath = `${configPathPrefix}/${serviceDir}/${configFile}`;
-      const secondaryPath = isAwg ? "/etc/wireguard/awg0.conf" : (serviceDir === "xray" ? "/etc/xray/config.json" : "");
+      // Single source of truth (see getProtocolRuntimeInfo above) -- keeps this deploy
+      // pipeline and the add/remove-client pipelines permanently in sync on paths/unit name.
+      const runtimeInfo = getProtocolRuntimeInfo(selectedDeployProtocol.id);
+      const serviceName: string = runtimeInfo.serviceName;
+      const confPath = runtimeInfo.primaryConfigPath;
+      const secondaryPath = runtimeInfo.secondaryConfigPath;
 
       // Populated by the "keygen" step's verify() below, read (by closure reference) later
       // by write_config -- so the config can embed REAL keys directly instead of writing a
@@ -1230,11 +1301,19 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
 
       if (isRealityProtocol && realityServerPub) {
         link = link.replace(/pbk=[^&#]+/, `pbk=${realityServerPub}`);
+        // Persist the REAL derived public key -- was previously left as a Math.random
+        // placeholder forever (never mattered for THIS client's link since the regex above
+        // patches it directly into `link`, but it's needed as the source of truth for
+        // later add-client operations, so fix it at the root).
+        newPub = realityServerPub;
       }
 
       if (isAwg) {
         if (awgClientPriv && awgServerPub) {
           link = buildAwgClientConf(awgClientPriv, awgServerPub);
+          // Same fix as above: the server's real WG public key, needed by add-client later
+          // to build every subsequent peer's .conf with the correct [Peer] PublicKey.
+          newPub = awgServerPub;
         } else {
           setIsDeploying(false);
           setDeployLogs((prev) => [...prev, `[ERROR] Не удалось получить ключи AmneziaWG с сервера -- служба поднялась, но конфиг клиента невозможно собрать корректно.`]);
@@ -1243,6 +1322,14 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
         }
       }
     }
+
+    const firstClient: VPNClientEntry = {
+      id: "c-" + Date.now(),
+      name: deployClientName,
+      uuid: newUuid,
+      clientLink: link,
+      createdAt: new Date().toISOString(),
+    };
 
     const newInst: InstalledVPNService = {
       id: "vpn-inst-" + Date.now(),
@@ -1254,13 +1341,16 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
       uuid: newUuid,
       publicKey: newPub,
       clientLink: link,
+      clients: [firstClient],
       uptime: "Только что запущен",
       trafficRxGb: 0.1,
       trafficTxGb: 0.2,
       activeClientsCount: 1,
       installedAt: new Date().toISOString().split("T")[0],
       version: selectedDeployProtocol.version,
-      configPath: `/etc/${selectedDeployProtocol.id}/config.json`,
+      // Real path this protocol's binary actually reads (was previously hardcoded/wrong --
+      // see getProtocolRuntimeInfo).
+      configPath: getProtocolRuntimeInfo(selectedDeployProtocol.id).primaryConfigPath,
     };
 
     setInstalledServices((prev) => [newInst, ...prev]);
@@ -1339,6 +1429,501 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
     navigator.clipboard.writeText(text);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  // ============================================================================================
+  // MULTI-CLIENT MANAGEMENT (add / remove a client on an already-deployed service)
+  //
+  // Design principle driving every step below: NEVER trust locally-remembered deploy-time
+  // settings for what's actually running -- always fetch and parse the REAL live config off
+  // the server first, mutate only the client list inside it, validate the result BEFORE it
+  // ever touches the live service, and roll back on any failure. This mirrors the same
+  // verified step-by-step approach already used for the initial deploy pipeline.
+  // ============================================================================================
+
+  const openAddClientModal = (service: InstalledVPNService) => {
+    setAddClientResult(null);
+    setClientMutationLogs([]);
+    setNewClientName(`Client-Device-${(service.clients?.length || 0) + 1}`);
+    setAddClientTarget(service);
+  };
+
+  // Derives a client link purely from the REAL live server config (not from possibly-stale
+  // local component state) -- so an added client's link always matches what's actually
+  // running, even if the service's transport/security settings were tweaked by hand outside
+  // the panel after the original deploy.
+  const buildLinkFromLiveXrayConfig = (service: InstalledVPNService, cfg: any, uuid: string, name: string): string => {
+    const hostName = server.isDemo ? "demo.server.com" : server.host;
+    const safeHost = hostName.includes(":") ? `[${hostName}]` : hostName;
+    const encName = (s: string) => encodeURIComponent(s);
+    const inbound = cfg.inbounds?.[0] || {};
+    const protoName = inbound.protocol;
+    const stream = inbound.streamSettings || {};
+    const transport = stream.network || "tcp";
+    const security = stream.security || "none";
+
+    if (service.protocolId === "anytls") {
+      const sni = stream?.tlsSettings?.server_name || service.sni;
+      return `anytls://${uuid}@${safeHost}:${service.port}?sni=${sni}&insecure=1#${encName(`${server.name}-AnyTLS-sing-box`)}`;
+    }
+    if (protoName === "trojan") {
+      let query = `type=${transport}&security=${security}&sni=${stream?.tlsSettings?.serverName || service.sni}`;
+      if (transport === "grpc") query += `&serviceName=${stream?.grpcSettings?.serviceName || ""}`;
+      if (transport === "ws") {
+        query += `&path=${encodeURIComponent(stream?.wsSettings?.path || "/ws")}`;
+        const wsHost = stream?.wsSettings?.headers?.Host;
+        if (wsHost) query += `&host=${encodeURIComponent(wsHost)}`;
+      }
+      return `trojan://${uuid}@${safeHost}:${service.port}?${query}#${encName(`${server.name}-${name}`)}`;
+    }
+    if (protoName === "vmess") {
+      return `vmess://${btoa(JSON.stringify({
+        v: "2", ps: `${server.name}-${name}`, add: safeHost, port: service.port, id: uuid, aid: 0,
+        net: transport, type: "none",
+        host: stream?.wsSettings?.headers?.Host || service.sni,
+        path: stream?.wsSettings?.path || "/ws",
+        tls: security === "none" ? "" : security,
+        sni: service.sni,
+      }))}`;
+    }
+    // vless (reality or tls)
+    let query = `type=${transport}&security=${security}&sni=${service.sni}`;
+    const fp = stream?.realitySettings?.fingerprint;
+    if (fp) query += `&fp=${fp}`;
+    if (security === "reality") {
+      query += `&pbk=${service.publicKey || ""}&sid=${stream?.realitySettings?.shortIds?.[0] || ""}`;
+    }
+    const flow = inbound.settings?.clients?.[0]?.flow;
+    if (flow) query += `&flow=${flow}`;
+    if (transport === "grpc") query += `&serviceName=${stream?.grpcSettings?.serviceName || ""}`;
+    else if (transport === "ws") {
+      query += `&path=${encodeURIComponent(stream?.wsSettings?.path || "/ws")}`;
+      const wsHost = stream?.wsSettings?.headers?.Host;
+      if (wsHost) query += `&host=${encodeURIComponent(wsHost)}`;
+    }
+    return `vless://${uuid}@${safeHost}:${service.port}?${query}#${encName(`${server.name}-${name}`)}`;
+  };
+
+  // Adds or removes a client on a JSON-configured protocol (Xray family or AnyTLS/sing-box).
+  const mutateJsonProtocolClients = async (
+    service: InstalledVPNService,
+    mode: "add" | "remove",
+    opts: { newClientName?: string; removeClient?: VPNClientEntry }
+  ): Promise<VPNClientEntry | null> => {
+    const runtime = getProtocolRuntimeInfo(service.protocolId);
+    const isAnytls = service.protocolId === "anytls";
+
+    let resolvedPath = "";
+    let parsedConfig: any = null;
+    let tmpConfigPath = "";
+    let backupPathUsed = "";
+    let serviceRestartAttempted = false;
+    let resultEntry: VPNClientEntry | null = null;
+
+    const steps: DeployStep[] = [];
+
+    steps.push({
+      key: "preflight",
+      label: "Проверка текущего состояния службы",
+      run: () => execCommand(server, `systemctl is-active ${runtime.serviceName} 2>/dev/null || echo inactive`),
+      verify: (res) => {
+        const state = res.stdout.trim().split("\n")[0]?.trim();
+        if (state !== "active") {
+          return `Служба ${runtime.serviceName} сейчас не активна (${state || "unknown"}) -- изменять конфиг неработающей службы небезопасно. Сначала запустите/почините её.`;
+        }
+        return null;
+      },
+    });
+
+    steps.push({
+      key: "fetch_config",
+      label: "Чтение текущего конфига с сервера",
+      run: () => execCommand(server, `
+        if [ -f "${runtime.primaryConfigPath}" ]; then CONF="${runtime.primaryConfigPath}";
+        elif [ -f "${runtime.secondaryConfigPath}" ]; then CONF="${runtime.secondaryConfigPath}";
+        else echo "CONF_NOT_FOUND"; exit 0; fi
+        echo "CONF_PATH_USED:$CONF"
+        echo "===CONF_START==="
+        cat "$CONF"
+        echo "===CONF_END==="
+      `),
+      verify: (res) => {
+        if (res.stdout.includes("CONF_NOT_FOUND")) {
+          return `Файл конфигурации не найден ни по одному из ожидаемых путей (${runtime.primaryConfigPath}${runtime.secondaryConfigPath ? " / " + runtime.secondaryConfigPath : ""}).`;
+        }
+        resolvedPath = res.stdout.match(/CONF_PATH_USED:(\S+)/)?.[1] || runtime.primaryConfigPath;
+        const body = res.stdout.split("===CONF_START===")[1]?.split("===CONF_END===")[0];
+        if (!body || !body.trim()) return "Не удалось прочитать содержимое конфигурационного файла.";
+        try {
+          parsedConfig = JSON.parse(body.trim());
+        } catch (e: any) {
+          return `Конфиг на сервере повреждён или не является валидным JSON (возможно, отредактирован вручную) -- отменяю, чтобы не рисковать: ${e?.message || ""}`;
+        }
+        const clientsArr = isAnytls ? parsedConfig?.inbounds?.[0]?.users : parsedConfig?.inbounds?.[0]?.settings?.clients;
+        if (!Array.isArray(clientsArr)) return "Структура конфига не соответствует ожидаемой (не найден список клиентов) -- отменяю, чтобы не повредить рабочий конфиг.";
+        return null;
+      },
+    });
+
+    steps.push({
+      key: "mutate_validate",
+      label: mode === "add" ? "Добавление клиента и валидация нового конфига" : "Удаление клиента и валидация нового конфига",
+      run: async () => {
+        const clientsArr: any[] = isAnytls ? parsedConfig.inbounds[0].users : parsedConfig.inbounds[0].settings.clients;
+
+        if (mode === "add") {
+          const newUuid = window.crypto.randomUUID();
+          const name = (opts.newClientName || `Client-${clientsArr.length + 1}`).trim();
+          if (isAnytls) {
+            clientsArr.push({ name, password: newUuid });
+          } else {
+            const protoName = parsedConfig.inbounds[0].protocol;
+            if (protoName === "trojan") clientsArr.push({ password: newUuid, email: `${name}@xray` });
+            else if (protoName === "vmess") clientsArr.push({ id: newUuid, alterId: 0, email: `${name}@xray` });
+            else clientsArr.push({ id: newUuid, flow: clientsArr[0]?.flow || undefined, email: `${name}@xray` });
+          }
+          resultEntry = {
+            id: "c-" + Date.now(),
+            name,
+            uuid: newUuid,
+            clientLink: buildLinkFromLiveXrayConfig(service, parsedConfig, newUuid, name),
+            createdAt: new Date().toISOString(),
+          };
+        } else {
+          if (clientsArr.length <= 1) {
+            throw new Error("Нельзя удалить последнего клиента -- остановите или удалите сервис целиком, если он больше не нужен.");
+          }
+          const target = opts.removeClient!;
+          const idx = clientsArr.findIndex((c) => c.id === target.uuid || c.password === target.uuid || c.email === `${target.name}@xray`);
+          if (idx === -1) {
+            throw new Error("Указанный клиент не найден в текущем конфиге на сервере (возможно, уже удалён вручную).");
+          }
+          clientsArr.splice(idx, 1);
+        }
+
+        const newConfigText = JSON.stringify(parsedConfig, null, 2);
+        tmpConfigPath = `${resolvedPath}.new-${Date.now()}`;
+        const marker = `EOF_CONF_${Date.now()}`;
+        const validateCmd = isAnytls
+          ? `SB_BIN=$(command -v sing-box || echo /usr/local/bin/sing-box); $SB_BIN check -c "${tmpConfigPath}" 2>&1; echo "VALIDATE_CODE:$?"`
+          : `XRAY_BIN=$(command -v xray || echo /usr/local/bin/xray); $XRAY_BIN run -test -config "${tmpConfigPath}" 2>&1; echo "VALIDATE_CODE:$?"`;
+        return execCommand(server, `
+cat > "${tmpConfigPath}" <<'${marker}'
+${newConfigText}
+${marker}
+${validateCmd}
+sudo rm -f "${tmpConfigPath}.leftover" 2>/dev/null || true
+        `);
+      },
+      verify: (res) => {
+        if (!/VALIDATE_CODE:0/.test(res.stdout)) {
+          return `Новый конфиг НЕ прошёл валидацию ${isAnytls ? "sing-box check" : "xray run -test"} -- рабочий конфиг НЕ тронут. Вывод: ${res.stdout.slice(-400)}`;
+        }
+        return null;
+      },
+      rollback: async () => {
+        if (tmpConfigPath) await execCommand(server, `sudo rm -f "${tmpConfigPath}" 2>/dev/null || true`);
+      },
+    });
+
+    steps.push({
+      key: "apply",
+      label: "Применение конфига и перезапуск службы",
+      run: async () => {
+        const backupPath = `${resolvedPath}.bak-${Date.now()}`;
+        serviceRestartAttempted = true;
+        return execCommand(server, `
+          sudo cp "${resolvedPath}" "${backupPath}"
+          sudo cp "${tmpConfigPath}" "${resolvedPath}"
+          sudo rm -f "${tmpConfigPath}"
+          sudo systemctl restart ${runtime.serviceName}
+          sleep 2
+          echo "ACTIVE_STATE:$(systemctl show ${runtime.serviceName} --property=ActiveState --value 2>/dev/null)"
+          echo "BACKUP_PATH:${backupPath}"
+        `);
+      },
+      verify: (res) => {
+        backupPathUsed = res.stdout.match(/BACKUP_PATH:(\S+)/)?.[1] || "";
+        const active = res.stdout.match(/ACTIVE_STATE:(\w+)/)?.[1];
+        if (active !== "active") {
+          return `Служба ${runtime.serviceName} не поднялась после изменения конфига (${active || "unknown"}) -- откатываю на предыдущую рабочую версию.`;
+        }
+        return null;
+      },
+      rollback: async () => {
+        if (backupPathUsed) {
+          await execCommand(server, `sudo cp "${backupPathUsed}" "${resolvedPath}" 2>/dev/null; sudo systemctl restart ${runtime.serviceName} 2>/dev/null || true`);
+        } else if (serviceRestartAttempted) {
+          await execCommand(server, `sudo systemctl restart ${runtime.serviceName} 2>/dev/null || true`);
+        }
+      },
+    });
+
+    const outcome = await runDeployPipeline(steps, (line) => setClientMutationLogs((prev) => [...prev, line]));
+    if (!outcome.success) {
+      throw new Error(outcome.failureReason || `Не удалось выполнить операцию на шаге "${outcome.failedStep}"`);
+    }
+    return resultEntry;
+  };
+
+  // Adds or removes a client (peer) on AmneziaWG -- INI format, real X25519 keys generated
+  // server-side, IP allocation computed from the actually-used addresses in the live conf.
+  const mutateAwgClients = async (
+    service: InstalledVPNService,
+    mode: "add" | "remove",
+    opts: { removeClient?: VPNClientEntry }
+  ): Promise<VPNClientEntry | null> => {
+    const runtime = getProtocolRuntimeInfo("amnezia-wg");
+    let resolvedPaths: string[] = [];
+    let confText = "";
+    let interfaceParams: Record<string, string> = {};
+    let usedIps: number[] = [];
+    let backupSuffix = "";
+    let serviceRestartAttempted = false;
+    let resultEntry: VPNClientEntry | null = null;
+
+    const steps: DeployStep[] = [];
+
+    steps.push({
+      key: "preflight",
+      label: "Проверка текущего состояния службы",
+      run: () => execCommand(server, `systemctl is-active ${runtime.serviceName} 2>/dev/null || echo inactive`),
+      verify: (res) => {
+        const state = res.stdout.trim().split("\n")[0]?.trim();
+        if (state !== "active") return `Служба ${runtime.serviceName} сейчас не активна (${state || "unknown"}) -- изменять конфиг небезопасно.`;
+        return null;
+      },
+    });
+
+    steps.push({
+      key: "fetch_config",
+      label: "Чтение текущего конфига AmneziaWG",
+      run: () => execCommand(server, `
+        for P in "${runtime.primaryConfigPath}" "${runtime.secondaryConfigPath}"; do
+          if [ -f "$P" ]; then echo "CONF_PATH_FOUND:$P"; fi
+        done
+        CONF="${runtime.primaryConfigPath}"
+        [ -f "$CONF" ] || CONF="${runtime.secondaryConfigPath}"
+        if [ ! -f "$CONF" ]; then echo "CONF_NOT_FOUND"; exit 0; fi
+        echo "===CONF_START==="
+        cat "$CONF"
+        echo "===CONF_END==="
+      `),
+      verify: (res) => {
+        if (res.stdout.includes("CONF_NOT_FOUND")) return "Файл конфигурации AmneziaWG не найден ни по одному из ожидаемых путей.";
+        resolvedPaths = [...res.stdout.matchAll(/CONF_PATH_FOUND:(\S+)/g)].map((m) => m[1]);
+        if (resolvedPaths.length === 0) resolvedPaths = [runtime.primaryConfigPath];
+        const body = res.stdout.split("===CONF_START===")[1]?.split("===CONF_END===")[0];
+        if (!body || !body.includes("[Interface]")) return "Не удалось прочитать/распознать конфиг AmneziaWG (нет секции [Interface]).";
+        confText = body.trim();
+        const ifaceBlock = confText.split(/\n\[Peer\]/)[0];
+        for (const key of ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4"]) {
+          const m = ifaceBlock.match(new RegExp(`${key}\\s*=\\s*(\\S+)`));
+          if (m) interfaceParams[key] = m[1];
+        }
+        usedIps = [...confText.matchAll(/AllowedIPs\s*=\s*10\.29\.29\.(\d+)\/32/g)].map((m) => parseInt(m[1], 10));
+        const peerCount = (confText.match(/\[Peer\]/g) || []).length;
+        if (peerCount === 0) return "В конфиге не найдено ни одного [Peer] -- структура не соответствует ожидаемой, отменяю.";
+        return null;
+      },
+    });
+
+    let newClientPriv = "";
+    let newClientPub = "";
+    let newIp = 0;
+
+    steps.push({
+      key: "mutate",
+      label: mode === "add" ? "Генерация ключей нового клиента и обновление конфига" : "Удаление пира из конфига",
+      run: async () => {
+        let newConfText = "";
+        if (mode === "add") {
+          newIp = 2;
+          while (usedIps.includes(newIp) && newIp < 254) newIp++;
+          if (newIp >= 254) throw new Error("Пул IP-адресов AmneziaWG исчерпан (лимит ~250 клиентов на интерфейс).");
+          const keyRes = await execCommand(server, `
+            AWG_BIN=$(command -v awg || command -v wg)
+            CPRIV=$($AWG_BIN genkey)
+            CPUB=$(echo "$CPRIV" | $AWG_BIN pubkey)
+            echo "CLIENT_PRIV:$CPRIV"
+            echo "CLIENT_PUB:$CPUB"
+          `);
+          newClientPriv = keyRes.stdout.match(/CLIENT_PRIV:(\S+)/)?.[1] || "";
+          newClientPub = keyRes.stdout.match(/CLIENT_PUB:(\S+)/)?.[1] || "";
+          if (!newClientPriv || !newClientPub) throw new Error("Не удалось сгенерировать ключевую пару клиента на сервере (awg/wg genkey недоступен?).");
+          newConfText = `${confText}\n\n[Peer]\nPublicKey = ${newClientPub}\nAllowedIPs = 10.29.29.${newIp}/32\n`;
+        } else {
+          const target = opts.removeClient!;
+          const peerBlocks = confText.split(/\n(?=\[Peer\])/);
+          const idx = peerBlocks.findIndex((b) => b.includes(`PublicKey = ${target.uuid}`));
+          if (idx === -1) throw new Error("Указанный клиент (peer) не найден в текущем конфиге на сервере.");
+          const peerBlockCount = peerBlocks.filter((b) => b.trim().startsWith("[Peer]")).length;
+          if (peerBlockCount <= 1) throw new Error("Нельзя удалить последнего клиента -- остановите или удалите сервис целиком.");
+          peerBlocks.splice(idx, 1);
+          newConfText = peerBlocks.join("\n");
+        }
+
+        const marker = `EOF_AWG_${Date.now()}`;
+        const backupTs = Date.now();
+        backupSuffix = `.bak-${backupTs}`;
+        serviceRestartAttempted = true;
+        const writeCmds = resolvedPaths
+          .map(
+            (p) => `
+sudo cp "${p}" "${p}${backupSuffix}" 2>/dev/null || true
+cat > /tmp/awg_new_conf_${backupTs}.conf <<'${marker}'
+${newConfText}
+${marker}
+sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
+`
+          )
+          .join("\n");
+        return execCommand(server, `
+          ${writeCmds}
+          rm -f /tmp/awg_new_conf_${backupTs}.conf
+          sudo systemctl restart ${runtime.serviceName}
+          sleep 2
+          echo "ACTIVE_STATE:$(systemctl show ${runtime.serviceName} --property=ActiveState --value 2>/dev/null)"
+          AWG_BIN=$(command -v awg || command -v wg)
+          echo "===PEERS==="
+          sudo $AWG_BIN show awg0 allowed-ips 2>/dev/null
+          echo "===END_PEERS==="
+        `);
+      },
+      verify: (res) => {
+        const active = res.stdout.match(/ACTIVE_STATE:(\w+)/)?.[1];
+        if (active !== "active") return `Служба ${runtime.serviceName} не поднялась после изменения конфига (${active || "unknown"}) -- откатываю.`;
+        const peersOutput = res.stdout.split("===PEERS===")[1]?.split("===END_PEERS===")[0] || "";
+        if (mode === "add") {
+          if (!peersOutput.includes(newClientPub)) {
+            return `Служба поднялась, но новый пир не обнаружен в реальном выводе '${"awg/wg show"}' -- откатываю на всякий случай.`;
+          }
+          resultEntry = {
+            id: "c-" + Date.now(),
+            name: "", // filled in by caller (name isn't stored server-side for WG peers)
+            uuid: newClientPub,
+            clientLink: buildAwgClientConfShared({
+              clientPriv: newClientPriv,
+              serverPub: service.publicKey || "",
+              clientAddress: `10.29.29.${newIp}/32`,
+              endpointHost: server.isDemo ? "demo.server.com" : server.host,
+              endpointPort: service.port,
+              awgVersion: (interfaceParams.S3 !== undefined ? "2.0" : "1.0"),
+              awgJc: interfaceParams.Jc ?? 4, awgJmin: interfaceParams.Jmin ?? 40, awgJmax: interfaceParams.Jmax ?? 70,
+              awgS1: interfaceParams.S1 ?? 15, awgS2: interfaceParams.S2 ?? 20,
+              awgS3: interfaceParams.S3 ?? 0, awgS4: interfaceParams.S4 ?? 0,
+              awgH1: interfaceParams.H1 ?? 1, awgH2: interfaceParams.H2 ?? 2, awgH3: interfaceParams.H3 ?? 3, awgH4: interfaceParams.H4 ?? 4,
+            }),
+            createdAt: new Date().toISOString(),
+          };
+        } else {
+          if (peersOutput.includes(opts.removeClient!.uuid)) {
+            return "Служба поднялась, но удаляемый пир всё ещё виден в реальном выводе 'awg/wg show' -- откатываю на всякий случай.";
+          }
+        }
+        return null;
+      },
+      rollback: async () => {
+        if (!backupSuffix) return;
+        const restoreCmds = resolvedPaths.map((p) => `sudo cp "${p}${backupSuffix}" "${p}" 2>/dev/null || true`).join("\n");
+        await execCommand(server, `${restoreCmds}\nsudo systemctl restart ${runtime.serviceName} 2>/dev/null || true`);
+      },
+    });
+
+    const outcome = await runDeployPipeline(steps, (line) => setClientMutationLogs((prev) => [...prev, line]));
+    if (!outcome.success) {
+      throw new Error(outcome.failureReason || `Не удалось выполнить операцию на шаге "${outcome.failedStep}"`);
+    }
+    return resultEntry;
+  };
+
+  const handleConfirmAddClient = async () => {
+    const service = addClientTarget;
+    if (!service) return;
+    const name = newClientName.trim() || `Client-${(service.clients?.length || 0) + 1}`;
+
+    setIsMutatingClients(true);
+    setClientMutationLogs([`[CHECK] Подключение к серверу ${server.username}@${server.host} для добавления клиента "${name}"...`]);
+
+    try {
+      if (server.isDemo) {
+        await new Promise((r) => setTimeout(r, 900));
+        const fakeUuid = window.crypto.randomUUID();
+        const entry: VPNClientEntry = {
+          id: "c-" + Date.now(),
+          name,
+          uuid: fakeUuid,
+          clientLink: service.protocolId === "amnezia-wg"
+            ? `[Interface]\nPrivateKey = (демо, симуляция)\nAddress = 10.29.29.${(service.clients?.length || 0) + 2}/32\n\n[Peer]\nPublicKey = ${service.publicKey || "demo_pub"}\nEndpoint = demo.server.com:${service.port}\nAllowedIPs = 0.0.0.0/0, ::/0`
+            : `${service.clientLink.split("#")[0]}#${encodeURIComponent(`${server.name}-${name}`)}`,
+          createdAt: new Date().toISOString(),
+        };
+        setClientMutationLogs((prev) => [...prev, `[SUCCESS] Демо-клиент "${name}" добавлен (симуляция, реальные команды не выполнялись).`]);
+        setInstalledServices((prev) => prev.map((s) => (s.id === service.id ? { ...s, clients: [...(s.clients || []), entry], activeClientsCount: (s.clients?.length || 0) + 1 } : s)));
+        setAddClientResult(entry);
+        setIsMutatingClients(false);
+        return;
+      }
+
+      let entry: VPNClientEntry | null;
+      if (service.protocolId === "amnezia-wg") {
+        entry = await mutateAwgClients(service, "add", {});
+        if (entry) entry.name = name;
+      } else {
+        entry = await mutateJsonProtocolClients(service, "add", { newClientName: name });
+      }
+
+      if (!entry) throw new Error("Операция завершилась без результата.");
+
+      setClientMutationLogs((prev) => [...prev, `[SUCCESS] Клиент "${name}" добавлен, служба перезапущена и подтверждена активной.`]);
+      setInstalledServices((prev) =>
+        prev.map((s) => (s.id === service.id ? { ...s, clients: [...(s.clients || []), entry as VPNClientEntry], activeClientsCount: (s.clients?.length || 0) + 1 } : s))
+      );
+      setAddClientResult(entry);
+      toast.success(`Клиент "${name}" успешно добавлен`);
+    } catch (err: any) {
+      setClientMutationLogs((prev) => [...prev, `[FAILED] ${err?.message || "неизвестная ошибка"}`]);
+      toast.error(`Не удалось добавить клиента`, (err?.message || "См. лог").slice(0, 300));
+    } finally {
+      setIsMutatingClients(false);
+    }
+  };
+
+  const handleConfirmRemoveClient = async () => {
+    if (!removingClient) return;
+    const { service, client } = removingClient;
+    setIsMutatingClients(true);
+    setClientMutationLogs([`[CHECK] Подключение к серверу для удаления клиента "${client.name}"...`]);
+
+    try {
+      if (server.isDemo) {
+        await new Promise((r) => setTimeout(r, 700));
+        setInstalledServices((prev) =>
+          prev.map((s) => (s.id === service.id ? { ...s, clients: (s.clients || []).filter((c) => c.id !== client.id), activeClientsCount: Math.max(1, (s.clients?.length || 1) - 1) } : s))
+        );
+        setClientMutationLogs((prev) => [...prev, `[SUCCESS] Демо-клиент "${client.name}" удалён (симуляция).`]);
+        setRemovingClient(null);
+        setIsMutatingClients(false);
+        return;
+      }
+
+      if (service.protocolId === "amnezia-wg") {
+        await mutateAwgClients(service, "remove", { removeClient: client });
+      } else {
+        await mutateJsonProtocolClients(service, "remove", { removeClient: client });
+      }
+
+      setInstalledServices((prev) =>
+        prev.map((s) => (s.id === service.id ? { ...s, clients: (s.clients || []).filter((c) => c.id !== client.id), activeClientsCount: Math.max(1, (s.clients?.length || 1) - 1) } : s))
+      );
+      toast.success(`Клиент "${client.name}" удалён`);
+      setRemovingClient(null);
+    } catch (err: any) {
+      setClientMutationLogs((prev) => [...prev, `[FAILED] ${err?.message || "неизвестная ошибка"}`]);
+      toast.error(`Не удалось удалить клиента`, (err?.message || "См. лог").slice(0, 300));
+    } finally {
+      setIsMutatingClients(false);
+    }
   };
 
   // AI Assistant Query Handler
@@ -1684,7 +2269,10 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                       )}
                     </button>
                     <button
-                      onClick={() => setQrModalService(service)}
+                      onClick={() => {
+                        const primary = service.clients?.[0];
+                        setQrModalService(primary ? { name: primary.name, uuid: primary.uuid, clientLink: primary.clientLink } : { name: service.name, uuid: service.uuid, clientLink: service.clientLink });
+                      }}
                       className="px-3.5 py-2 bg-slate-100 hover:bg-white text-slate-950 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md active:scale-95"
                     >
                       <QrCode className="w-3.5 h-3.5 text-fuchsia-700" />
@@ -1736,27 +2324,68 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                   </div>
                 </div>
 
-                {/* Client Link Row */}
-                <div className="pt-2 border-t border-slate-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="text-[10px] text-slate-400 font-mono truncate">
-                    Конфиг: <span className="text-slate-300">{service.configPath}</span>
+                {/* Clients list (multi-client) */}
+                <div className="pt-2 border-t border-slate-800/60 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="text-[10px] text-slate-400 font-mono truncate">
+                      Конфиг: <span className="text-slate-300">{service.configPath}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        {service.clients?.length || 0} клиент(ов)
+                      </span>
+                      {service.protocolId === "shadowsocks-2022" ? (
+                        <span
+                          title={SS2022_NO_MULTI_CLIENT_REASON}
+                          className="text-[10px] px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-slate-600 cursor-help"
+                        >
+                          Мультиклиент недоступен
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => openAddClientModal(service)}
+                          className="px-2.5 py-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 text-violet-300 text-[10px] font-bold flex items-center gap-1 transition"
+                        >
+                          <UserPlus className="w-3 h-3" />
+                          <span>Добавить клиента</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  
-                  <div className="relative flex items-center w-full sm:max-w-md">
-                    <input
-                      type="text"
-                      readOnly
-                      value={service.clientLink}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-3 pr-24 py-2 text-[10px] text-violet-300 font-mono truncate focus:outline-none focus:border-slate-700"
-                      onClick={(e) => (e.target as HTMLInputElement).select()}
-                    />
-                    <button
-                      onClick={() => handleCopyText(service.clientLink)}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg transition text-[10px] font-bold flex items-center gap-1 border border-slate-700"
-                    >
-                      {copiedLink ? <Check className="w-3 h-3 text-violet-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedLink ? "Скопировано" : "Копировать"}</span>
-                    </button>
+
+                  <div className="space-y-1.5">
+                    {(service.clients || []).map((client) => (
+                      <div key={client.id} className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[11px] text-white font-semibold truncate">{client.name}</div>
+                          <div className="text-[9px] text-slate-500 font-mono truncate">{client.clientLink}</div>
+                        </div>
+                        <button
+                          onClick={() => handleCopyText(client.clientLink)}
+                          title="Копировать"
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition shrink-0"
+                        >
+                          {copiedLink ? <Check className="w-3 h-3 text-violet-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => setQrModalService({ name: client.name, uuid: client.uuid, clientLink: client.clientLink })}
+                          title="QR-код"
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition shrink-0"
+                        >
+                          <QrCode className="w-3 h-3" />
+                        </button>
+                        {(service.clients?.length || 0) > 1 && (
+                          <button
+                            onClick={() => setRemovingClient({ service, client })}
+                            title="Удалить клиента"
+                            className="p-1.5 rounded-lg bg-rose-950/50 hover:bg-rose-900/60 text-rose-400 hover:text-rose-300 transition shrink-0"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -2816,6 +3445,162 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                   <span>{copiedLink ? "Скопировано!" : "Скопировать ключ доступа"}</span>
                 </button>
               </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* MODAL 3: ADD CLIENT */}
+      {addClientTarget &&
+        createPortal(
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md p-5 sm:p-6 space-y-4 shadow-2xl my-auto max-h-[90vh] overflow-y-auto scrollbar-thin">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-violet-500/10 border border-violet-500/30 text-violet-400">
+                    <UserPlus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Добавить клиента</h3>
+                    <p className="text-[11px] text-slate-400">{addClientTarget.name}</p>
+                  </div>
+                </div>
+                {!isMutatingClients && (
+                  <button
+                    onClick={() => { setAddClientTarget(null); setAddClientResult(null); setClientMutationLogs([]); }}
+                    className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+
+              {!addClientResult && !isMutatingClients && (
+                <div className="space-y-4 text-xs">
+                  <div>
+                    <label className="text-slate-400 font-semibold mb-1 block">Имя клиента</label>
+                    <input
+                      type="text"
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-[10px] text-slate-400 leading-relaxed">
+                    Перед изменением я проверю, что служба сейчас реально активна, прочитаю
+                    актуальный конфиг с сервера, соберу и провалидирую новую версию во
+                    временном файле {addClientTarget.protocolId !== "amnezia-wg" && `(${addClientTarget.protocolId === "anytls" ? "sing-box check" : "xray run -test"})`}
+                    и только потом применю её. Если что-то пойдёт не так -- автоматически
+                    откачу рабочий конфиг обратно и перезапущу службу с ним.
+                  </div>
+                  <button
+                    onClick={handleConfirmAddClient}
+                    className="w-full py-3 bg-violet-500 hover:bg-violet-400 text-slate-950 font-bold text-xs rounded-2xl transition flex items-center justify-center gap-2"
+                  >
+                    <Rocket className="w-4 h-4" />
+                    <span>Проверить и добавить</span>
+                  </button>
+                </div>
+              )}
+
+              {isMutatingClients && (
+                <div className="space-y-2 text-[10px] font-mono bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-64 overflow-y-auto">
+                  {clientMutationLogs.map((line, i) => (
+                    <div key={i} className={line.startsWith("[FAILED]") ? "text-rose-400" : line.startsWith("[SUCCESS]") ? "text-violet-400" : "text-slate-400"}>
+                      {line}
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2 text-slate-500 pt-1">
+                    <RotateCw className="w-3 h-3 animate-spin" />
+                    <span>Выполняется...</span>
+                  </div>
+                </div>
+              )}
+
+              {addClientResult && !isMutatingClients && (
+                <div className="space-y-4 text-xs">
+                  <div className="bg-violet-500/10 border border-violet-500/30 rounded-2xl p-3 flex items-center gap-2 text-violet-300">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>Клиент "{addClientResult.name}" добавлен и служба подтверждена активной.</span>
+                  </div>
+                  <div className="flex justify-center py-3 bg-white/5 rounded-2xl border border-white/5">
+                    <QRCodeSVG value={addClientResult.clientLink} size={180} />
+                  </div>
+                  <div className="relative flex items-center">
+                    <input
+                      type="text"
+                      readOnly
+                      value={addClientResult.clientLink}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-3 pr-24 py-2 text-[10px] text-violet-300 font-mono truncate"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                    <button
+                      onClick={() => handleCopyText(addClientResult.clientLink)}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10px] font-bold flex items-center gap-1 border border-slate-700"
+                    >
+                      {copiedLink ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedLink ? "Скопировано" : "Копировать"}</span>
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => { setAddClientTarget(null); setAddClientResult(null); setClientMutationLogs([]); }}
+                    className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-2xl transition"
+                  >
+                    Готово
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* MODAL 4: REMOVE CLIENT CONFIRM */}
+      {removingClient &&
+        createPortal(
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-5 sm:p-6 space-y-4 shadow-2xl my-auto">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Удалить клиента?</h3>
+                  <p className="text-[11px] text-slate-400">{removingClient.client.name} -- {removingClient.service.name}</p>
+                </div>
+              </div>
+
+              {!isMutatingClients ? (
+                <>
+                  <p className="text-[11px] text-slate-400">
+                    Конфиг клиента перестанет работать сразу после применения. Служба будет
+                    перезапущена (проверю активность до и после) -- при сбое изменения
+                    откатятся автоматически.
+                  </p>
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      onClick={() => setRemovingClient(null)}
+                      className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-2xl transition"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      onClick={handleConfirmRemoveClient}
+                      className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold text-xs rounded-2xl transition"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2 text-[10px] font-mono bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-64 overflow-y-auto">
+                  {clientMutationLogs.map((line, i) => (
+                    <div key={i} className={line.startsWith("[FAILED]") ? "text-rose-400" : line.startsWith("[SUCCESS]") ? "text-violet-400" : "text-slate-400"}>
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>,
           document.body

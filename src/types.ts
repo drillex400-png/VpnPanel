@@ -158,6 +158,24 @@ export interface VPNProtocolCatalog {
   isPopular?: boolean;
 }
 
+// A single client/peer attached to an installed VPN service. Most protocols support many
+// of these per install (Xray-family: entries in inbounds[0].settings.clients / sing-box
+// AnyTLS: entries in inbounds[0].users / AmneziaWG: [Peer] blocks) -- Shadowsocks-2022 is
+// the one exception, kept single-user only (see VPNView's SS2022_MULTI_CLIENT note) because
+// Xray-core's SS-2022 multi-user mode was found unstable in prior testing.
+//
+// `uuid` holds the protocol-appropriate identity secret: UUID for VLESS/VMess, password for
+// Trojan/AnyTLS/legacy-SS, and for AmneziaWG specifically it holds the CLIENT'S PUBLIC key
+// (needed to find/remove its [Peer] block later -- the matching private key lives only
+// inside `clientLink`'s .conf text, never persisted server-side or anywhere else).
+export interface VPNClientEntry {
+  id: string;
+  name: string;
+  uuid: string;
+  clientLink: string;
+  createdAt: string;
+}
+
 export interface InstalledVPNService {
   id: string;
   protocolId: VPNProtocolId;
@@ -168,6 +186,7 @@ export interface InstalledVPNService {
   uuid: string;
   publicKey?: string;
   clientLink: string;
+  clients: VPNClientEntry[];
   uptime: string;
   trafficRxGb: number;
   trafficTxGb: number;
