@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { SSHConfig, VPNProtocolCatalog, InstalledVPNService, VPNAssistantMessage } from "../types";
 import { execCommand, authFetch } from "../services/api";
@@ -212,6 +212,103 @@ const DEMO_INSTALLED_SERVICES: InstalledVPNService[] = [
   },
 ];
 
+// ---- Live metrics helpers (real data from the server, not static demo numbers) ----
+
+// Russian pluralization (день/дня/дней, час/часа/часов, etc.)
+const pluralRu = (n: number, one: string, few: string, many: string): string => {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+};
+
+// -1 is the sentinel for "unknown / service never started" (see buildLiveMetricsProbe) --
+// rendered as "--" instead of fabricating a duration.
+const formatUptimeSeconds = (totalSeconds: number): string => {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "—";
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (days > 0) return `${days} ${pluralRu(days, "день", "дня", "дней")} ${hours} ${pluralRu(hours, "час", "часа", "часов")}`;
+  if (hours > 0) return `${hours} ${pluralRu(hours, "час", "часа", "часов")} ${minutes} мин`;
+  return `${minutes} мин`;
+};
+
+// Splits "===KEY===\nvalue\n===KEY2===\nvalue2..." style output into a lookup map
+// (same sectioning convention used by the software-installer probe in ToolsView.tsx).
+const parseKeySections = (raw: string): Record<string, string> => {
+  const sections: Record<string, string> = {};
+  let currentKey = "default";
+  for (const line of raw.split("\n")) {
+    const m = line.match(/^===\s*([A-Z0-9_]+)\s*===/);
+    if (m) {
+      currentKey = m[1];
+      sections[currentKey] = "";
+    } else {
+      sections[currentKey] = (sections[currentKey] || "") + line + "\n";
+    }
+  }
+  return sections;
+};
+
+// Builds ONE combined SSH probe covering every installed (non-demo) service in a single
+// round-trip:
+//  - Real uptime per shared systemd unit (xray / sing-box / awg-quick@awg0) via
+//    ActiveEnterTimestamp -- numeric epoch math only, no locale-sensitive date parsing
+//    (LC_ALL=C forces English output regardless of server locale).
+//  - Real AmneziaWG traffic + active-peer count via `wg show <iface> transfer` /
+//    `latest-handshakes` (a peer counts as "active" if it handshook in the last 3 min).
+//  - Real per-port traffic + connection count for Xray-family/AnyTLS cards via `ss -ti`
+//    TCP_INFO byte counters and established-connection counts on that exact port -- this
+//    isolates traffic correctly per protocol/port without touching Xray's config (no
+//    stats-API wiring needed) and legitimately reads 0 for a stale port nothing is
+//    actually listening on anymore (honest, not fabricated).
+const buildLiveMetricsProbe = (services: InstalledVPNService[]): string => {
+  const hasXray = services.some((s) => s.protocolId.includes("xray") || s.protocolId === "shadowsocks-2022");
+  const hasAnytls = services.some((s) => s.protocolId === "anytls");
+  const hasAwg = services.some((s) => s.protocolId === "amnezia-wg");
+  const ports = Array.from(
+    new Set(
+      services
+        .filter((s) => s.protocolId !== "amnezia-wg")
+        .map((s) => Number(s.port))
+        .filter((p) => Number.isInteger(p) && p > 0 && p < 65536)
+    )
+  );
+
+  const uptimeBlock = (marker: string, unit: string) => `
+echo "===${marker}==="
+ST=$(LC_ALL=C systemctl show '${unit}' --property=ActiveEnterTimestamp --value 2>/dev/null)
+if [ -z "$ST" ] || [ "$ST" = "n/a" ]; then
+  echo -1
+else
+  EP=$(LC_ALL=C date -d "$ST" +%s 2>/dev/null || echo -1)
+  if [ "$EP" -lt 0 ]; then echo -1; else echo $(( $(date +%s) - EP )); fi
+fi`;
+
+  const blocks: string[] = [];
+  if (hasXray) blocks.push(uptimeBlock("XRAY_UPTIME", "xray"));
+  if (hasAnytls) blocks.push(uptimeBlock("ANYTLS_UPTIME", "sing-box"));
+  if (hasAwg) {
+    blocks.push(uptimeBlock("AWG_UPTIME", "awg-quick@awg0"));
+    blocks.push(`
+echo "===AWG_TRANSFER==="
+sudo wg show awg0 transfer 2>/dev/null || echo "NONE"
+echo "===AWG_HANDSHAKES==="
+sudo wg show awg0 latest-handshakes 2>/dev/null || echo "NONE"`);
+  }
+  for (const port of ports) {
+    blocks.push(`
+echo "===PORT_${port}_BYTES==="
+ss -ti state established "( sport = :${port} )" 2>/dev/null | grep -oE 'bytes_sent:[0-9]+|bytes_received:[0-9]+'
+echo "===PORT_${port}_CONNS==="
+ss -tn state established "( sport = :${port} )" 2>/dev/null | tail -n +2 | wc -l`);
+  }
+
+  return blocks.join("\n");
+};
+
 export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   const toast = useToast();
   // Installed VPNs State -- seeded per-server below (demo seed only for the demo server;
@@ -317,6 +414,109 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   useEffect(() => {
     checkServerVpnStatus();
   }, [server]);
+
+  // Live traffic/uptime/connections polling -- keeps a ref in sync with the latest
+  // installedServices so the interval callback below always builds its probe from
+  // current data without needing to tear down/recreate the interval on every render.
+  const installedServicesRef = useRef<InstalledVPNService[]>(installedServices);
+  useEffect(() => {
+    installedServicesRef.current = installedServices;
+  }, [installedServices]);
+
+  const refreshLiveVpnMetrics = async () => {
+    if (server.isDemo) return;
+    const services = installedServicesRef.current;
+    if (services.length === 0) return;
+
+    try {
+      const probe = buildLiveMetricsProbe(services);
+      const res = await execCommand(server, probe);
+      const sections = parseKeySections(res.stdout || "");
+
+      // AmneziaWG: sum real per-peer transfer bytes; a peer counts as "active" if its
+      // last handshake was within the last 3 minutes (WireGuard's own rekey cadence).
+      let awgRxBytes = 0;
+      let awgTxBytes = 0;
+      let awgHasTransfer = false;
+      const awgTransferRaw = (sections["AWG_TRANSFER"] || "").trim();
+      if (awgTransferRaw && awgTransferRaw !== "NONE") {
+        for (const line of awgTransferRaw.split("\n")) {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 3) {
+            awgRxBytes += Number(parts[1]) || 0;
+            awgTxBytes += Number(parts[2]) || 0;
+            awgHasTransfer = true;
+          }
+        }
+      }
+      let awgActiveClients = 0;
+      const awgHandshakesRaw = (sections["AWG_HANDSHAKES"] || "").trim();
+      if (awgHandshakesRaw && awgHandshakesRaw !== "NONE") {
+        const nowSec = Math.floor(Date.now() / 1000);
+        for (const line of awgHandshakesRaw.split("\n")) {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 2) {
+            const hsEpoch = Number(parts[1]) || 0;
+            if (hsEpoch > 0 && nowSec - hsEpoch < 180) awgActiveClients++;
+          }
+        }
+      }
+
+      setInstalledServices((prev) =>
+        prev.map((s) => {
+          let uptimeSec = -1;
+          if (s.protocolId.includes("xray") || s.protocolId === "shadowsocks-2022") {
+            uptimeSec = parseInt(sections["XRAY_UPTIME"] || "-1", 10);
+          } else if (s.protocolId === "anytls") {
+            uptimeSec = parseInt(sections["ANYTLS_UPTIME"] || "-1", 10);
+          } else if (s.protocolId === "amnezia-wg") {
+            uptimeSec = parseInt(sections["AWG_UPTIME"] || "-1", 10);
+          }
+
+          let trafficRxGb = s.trafficRxGb;
+          let trafficTxGb = s.trafficTxGb;
+          let activeClientsCount = s.activeClientsCount;
+
+          if (s.protocolId === "amnezia-wg") {
+            if (awgHasTransfer) {
+              trafficRxGb = awgRxBytes / 1e9;
+              trafficTxGb = awgTxBytes / 1e9;
+            }
+            activeClientsCount = awgActiveClients;
+          } else {
+            const port = Number(s.port);
+            const bytesRaw = sections[`PORT_${port}_BYTES`] || "";
+            const sentMatches = [...bytesRaw.matchAll(/bytes_sent:(\d+)/g)].map((m) => Number(m[1]));
+            const recvMatches = [...bytesRaw.matchAll(/bytes_received:(\d+)/g)].map((m) => Number(m[1]));
+            if (sentMatches.length || recvMatches.length) {
+              trafficTxGb = sentMatches.reduce((a, b) => a + b, 0) / 1e9;
+              trafficRxGb = recvMatches.reduce((a, b) => a + b, 0) / 1e9;
+            }
+            const connsNum = parseInt((sections[`PORT_${port}_CONNS`] || "").trim(), 10);
+            if (!Number.isNaN(connsNum)) activeClientsCount = connsNum;
+          }
+
+          return {
+            ...s,
+            uptime: formatUptimeSeconds(uptimeSec),
+            trafficRxGb,
+            trafficTxGb,
+            activeClientsCount,
+          };
+        })
+      );
+    } catch (e) {
+      console.error("Failed to refresh live VPN metrics", e);
+    }
+  };
+
+  useEffect(() => {
+    if (server.isDemo || activeTab !== "installed") return;
+    refreshLiveVpnMetrics();
+    const interval = setInterval(refreshLiveVpnMetrics, 10000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server.id, server.isDemo, activeTab, installedServices.length]);
 
   // 3X-UI Options Conflict Resolution
   useEffect(() => {
@@ -1419,7 +1619,10 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
               <p className="text-[11px] text-slate-400">Мониторинг и управление активными нодами на сервере</p>
             </div>
             <button
-              onClick={checkServerVpnStatus}
+              onClick={() => {
+                checkServerVpnStatus();
+                refreshLiveVpnMetrics();
+              }}
               className="group text-xs text-slate-400 hover:text-violet-300 flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-slate-900 border border-slate-800 hover:border-violet-500/30 rounded-xl transition-all"
             >
               <RefreshCw className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-500" />
@@ -1503,21 +1706,30 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                   </div>
 
                   <div className="space-y-0.5">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold">Трафик</div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold flex items-center gap-1">
+                      Трафик
+                      {!server.isDemo && <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" title="Живые данные с сервера" />}
+                    </div>
                     <div className="text-xs font-mono font-bold text-amber-300">
-                      {(service.trafficRxGb + service.trafficTxGb).toFixed(1)} GB
+                      {(service.trafficRxGb + service.trafficTxGb).toFixed(2)} GB
                     </div>
                   </div>
 
                   <div className="space-y-0.5">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold">Клиенты</div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold flex items-center gap-1">
+                      Подключ.
+                      {!server.isDemo && <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" title="Живые данные с сервера" />}
+                    </div>
                     <div className="text-xs font-mono font-bold text-fuchsia-300">
-                      {service.activeClientsCount} активн.
+                      {service.activeClientsCount} {service.protocolId === "amnezia-wg" ? "онлайн" : "актив."}
                     </div>
                   </div>
 
                   <div className="space-y-0.5">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold">Аптайм</div>
+                    <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold flex items-center gap-1">
+                      Аптайм
+                      {!server.isDemo && <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" title="Живые данные с сервера" />}
+                    </div>
                     <div className="text-xs font-mono font-bold text-slate-300 truncate">
                       {service.uptime}
                     </div>
