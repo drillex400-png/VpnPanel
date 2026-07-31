@@ -405,7 +405,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     const safeHost = hostName.includes(":") ? `[${hostName}]` : hostName;
     let link = "";
     if (selectedDeployProtocol.id === "anytls") {
-      link = `anytls://${newUuid}@${safeHost}:${deployPort}?sni=${deploySni}&security=tls&type=tcp&fp=chrome#${server.name}-AnyTLS-sing-box`;
+      link = `anytls://${newUuid}@${safeHost}:${deployPort}?sni=${deploySni}&insecure=1#${server.name}-AnyTLS-sing-box`;
     } else if (selectedDeployProtocol.id === "amnezia-wg") {
       link = `awg://${btoa(JSON.stringify({ v: awgVersion, host: safeHost, port: deployPort, uuid: awgPrivateKey, jc: awgJc, jmin: awgJmin, jmax: awgJmax, s1: awgS1, s2: awgS2, h1: awgH1, h2: awgH2, h3: awgH3, h4: awgH4 }))}#${server.name}-AmneziaWG-v${awgVersion}`;
     } else if (selectedDeployProtocol.id === "shadowsocks-2022") {
@@ -457,9 +457,11 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
                     password: newUuid
                   }
                 ],
-                fallback: {
-                  server: deploySni || "swdist.apple.com",
-                  server_port: 443
+                tls: {
+                  enabled: true,
+                  server_name: deploySni || "swdist.apple.com",
+                  certificate_path: "/etc/sing-box/cert.crt",
+                  key_path: "/etc/sing-box/cert.key"
                 }
               }
             ],
@@ -710,6 +712,12 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
           # Install official sing-box Core for AnyTLS from official SagerNet repository
           echo "[sing-box] Installing latest official sing-box core for AnyTLS..."
           sudo mkdir -p /etc/sing-box /usr/local/bin
+
+          # AnyTLS is always TLS-wrapped on the wire (tls is a required inbound field) --
+          # generate a self-signed cert if we don't already have one, same as the xray path.
+          if [ ! -f /etc/sing-box/cert.crt ]; then
+            sudo openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/sing-box/cert.key -out /etc/sing-box/cert.crt -days 3650 -subj "/CN=${deploySni}" 2>/dev/null || true
+          fi
           
           if ! command -v sing-box >/dev/null 2>&1; then
             curl -fsSL https://sing-box.app/install.sh | sh -s -- 2>/dev/null || {
