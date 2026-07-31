@@ -377,19 +377,27 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     setIsDeploying(true);
     setDeployLogs([`[SSH] Подключение к серверу ${server.username}@${server.host}:${server.port}...`]);
 
-    const steps = [
-      `[APT] Обновление пакетов apt и установка зависимостей (curl, wget, jq, unzip, docker)...`,
+    const preSteps = [
+      `[APT] Обновление пакетов apt и установка зависимостей (curl, wget, jq, unzip)...`,
       `[DOWNLOAD] Загрузка бинарных файлов ${selectedDeployProtocol.name} (${selectedDeployProtocol.version})...`,
-      `[KEYGEN] Генерация пар ключей X25519 Elliptic Curve и случайного UUID пользователя...`,
-      `[CONFIG] Создание конфигурации /etc/${selectedDeployProtocol.id}/config.json с маскировкой SNI: ${deploySni}...`,
-      `[FIREWALL] Настройка UFW: Открытие порта ${deployPort}/tcp и активация ядра TCP BBR...`,
+      `[KEYGEN] Генерация пар ключей и UUID пользователя...`,
+      `[CONFIG] Создание конфигурации с маскировкой SNI: ${deploySni}...`,
+      `[FIREWALL] Настройка UFW: открытие порта ${deployPort}/tcp...`,
       `[SYSTEMD] Регистрация юнита systemd и запуск службы...`,
-      `[SUCCESS] Деплой успешно завершен! Клиентская ссылка сформирована.`,
     ];
 
-    for (let i = 0; i < steps.length; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      setDeployLogs((prev) => [...prev, steps[i]]);
+    if (server.isDemo) {
+      // Demo server: nothing real happens, this is a pure UI simulation.
+      for (let i = 0; i < preSteps.length; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        setDeployLogs((prev) => [...prev, preSteps[i]]);
+      }
+      setDeployLogs((prev) => [...prev, `[SUCCESS] Демо-деплой завершён (симуляция, реальные команды не выполнялись).`]);
+    } else {
+      // Real server: show what we're about to do, but do NOT claim success --
+      // that only happens after the actual SSH script runs and we verify the
+      // service is really active on the target machine.
+      setDeployLogs((prev) => [...prev, ...preSteps, `[SSH] Выполнение установочного скрипта на сервере (может занять 1-3 минуты)...`]);
     }
 
     // Generate protocol specific standard link
@@ -704,7 +712,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
           sudo mkdir -p /etc/sing-box /usr/local/bin
           
           if ! command -v sing-box >/dev/null 2>&1; then
-            curl -fsSL https://sing-box.app/deb-install.sh | sudo bash 2>/dev/null || {
+            curl -fsSL https://sing-box.app/install.sh | sh -s -- 2>/dev/null || {
               SINGBOX_URL=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.assets[] | select(.name | contains("linux") and contains("amd64.tar.gz")) | .browser_download_url' 2>/dev/null | head -n 1)
               if [ -n "$SINGBOX_URL" ] && [ "$SINGBOX_URL" != "null" ]; then
                 curl -sL "$SINGBOX_URL" -o /tmp/sing-box.tar.gz
@@ -773,18 +781,45 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/sing-box.service > /d
           sudo systemctl daemon-reload 2>/dev/null || true
           sudo systemctl enable ${serviceName} 2>/dev/null || true
           sudo systemctl restart ${serviceName} 2>/dev/null || true
+
+          sleep 2
+          echo "SERVICE_STATUS:$(sudo systemctl is-active ${serviceName} 2>/dev/null || echo inactive)"
         `;
 
-        const res = await execCommand(server, bashScript);
-        
+        let res;
+        try {
+          res = await execCommand(server, bashScript);
+        } catch (err: any) {
+          setIsDeploying(false);
+          setDeployLogs((prev) => [...prev, `[ERROR] Не удалось выполнить SSH-соединение: ${err?.message || "неизвестная ошибка"}`]);
+          toast.error(`Деплой не удался: ${err?.message || "ошибка SSH-соединения"}`);
+          return;
+        }
+
+        const statusMatch = res.stdout?.match(/SERVICE_STATUS:(\w+)/);
+        const serviceIsActive = !!statusMatch && statusMatch[1] === "active";
+
+        if (!serviceIsActive) {
+          setIsDeploying(false);
+          const tail = (res.stderr || res.stdout || "Нет вывода").slice(-1000);
+          setDeployLogs((prev) => [...prev, `[ERROR] Служба ${serviceName} не запустилась после установки.`, tail]);
+          toast.error(`Деплой не удался: служба ${serviceName} не активна. Проверьте вывод в логе установки.`);
+          return;
+        }
+
+        setDeployLogs((prev) => [...prev, `[SUCCESS] Служба ${serviceName} активна и запущена на сервере.`]);
+
         if (res.stdout && res.stdout.includes("XRAY_REALITY_PUB:")) {
           const match = res.stdout.match(/XRAY_REALITY_PUB:([a-zA-Z0-9_-]+)/);
           if (match && match[1]) {
             link = link.replace(/pbk=[^&#]+/, `pbk=${match[1]}`);
           }
         }
-      } catch (err) {
-        console.warn("Real SSH deploy command warning:", err);
+      } catch (err: any) {
+        setIsDeploying(false);
+        setDeployLogs((prev) => [...prev, `[ERROR] Ошибка при подготовке деплоя: ${err?.message || "неизвестная ошибка"}`]);
+        toast.error(`Деплой не удался: ${err?.message || "неизвестная ошибка"}`);
+        return;
       }
     }
 
