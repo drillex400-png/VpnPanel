@@ -559,6 +559,85 @@ const validateAwgParams = (p: AwgObfuscationParams, version: "1.0" | "2.0"): str
   return issues;
 };
 
+// ============================================================================================
+// AnyTLS (sing-box) advanced settings: padding_scheme + ALPN + TLS version pinning
+//
+// Prior implementation only ever set users[]/tls.{enabled,server_name,certificate_path,
+// key_path} -- every AnyTLS-specific tunable beyond that was silently absent from the UI.
+// Per the official sing-box docs (sing-box.sagernet.org/configuration/inbound/anytls) the
+// inbound only has 3 top-level fields: users, padding_scheme, tls -- so padding_scheme was
+// the one entirely missing protocol-specific knob. ALPN/min_version/max_version come from
+// the shared TLS server object (also usable, also absent from the UI).
+//
+// padding_scheme grammar is NOT sing-box's own invention -- it comes from the upstream
+// anytls-go protocol spec (github.com/anytls/anytls-go/blob/main/docs/protocol.md), which
+// this validator follows exactly:
+//   "stop=N"      -- stop padding packets from index N onward (sent as-is after that).
+//   "<idx>=<seg>[,<seg>...]" -- describes how to pad/split packet <idx>. Each <seg> is
+//                    either "min-max" (a filler chunk with a random size in that byte
+//                    range) or the literal "c" (a checkpoint: stop emitting further filler
+//                    segments for this packet if no real user data remains to send).
+//   Packet 0 is the auth packet and is a hard protocol special case: it may ONLY have a
+//   single "min-max" segment -- no comma-separated multi-segment padding, no "c" marker.
+// ============================================================================================
+
+export const ANYTLS_DEFAULT_PADDING_SCHEME = [
+  "stop=8",
+  "0=30-30",
+  "1=100-400",
+  "2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000",
+  "3=9-9,500-1000",
+  "4=500-1000",
+  "5=500-1000",
+  "6=500-1000",
+  "7=500-1000",
+];
+
+export const validateAnytlsPaddingScheme = (raw: string): string[] => {
+  const issues: string[] = [];
+  const lines = raw.split("\n").map((l) => l.trim()).filter((l) => l.length > 0 && !l.startsWith("#"));
+  if (lines.length === 0) {
+    issues.push("Схема паддинга пуста -- добавь хотя бы одну строку или переключись на режим \"по умолчанию\".");
+    return issues;
+  }
+  const seenKeys = new Set<string>();
+  for (const line of lines) {
+    const m = line.match(/^(stop|\d+)=(.+)$/);
+    if (!m) {
+      issues.push(`Некорректная строка "${line}" -- ожидается формат "stop=N" или "<номер пакета>=<сегменты>".`);
+      continue;
+    }
+    const key = m[1];
+    const value = m[2];
+    if (seenKeys.has(key)) issues.push(`Повторяющийся ключ "${key}" -- каждый пакет/stop должен встречаться один раз.`);
+    seenKeys.add(key);
+    if (key === "stop") {
+      if (!/^\d+$/.test(value)) issues.push(`"stop=${value}" -- значение должно быть целым числом.`);
+      continue;
+    }
+    const packetIndex = parseInt(key, 10);
+    const segments = value.split(",");
+    if (packetIndex === 0 && segments.length > 1) {
+      issues.push("Пакет 0 (padding0, часть аутентификации) не поддерживает разбиение на несколько сегментов -- допустим только один диапазон \"min-max\".");
+    }
+    segments.forEach((seg) => {
+      if (seg === "c") {
+        if (packetIndex === 0) issues.push("Пакет 0 не поддерживает маркер \"c\".");
+        return;
+      }
+      const rangeMatch = seg.match(/^(\d+)-(\d+)$/);
+      if (!rangeMatch) {
+        issues.push(`Пакет ${packetIndex}: сегмент "${seg}" некорректен -- ожидается "min-max" или "c".`);
+        return;
+      }
+      if (parseInt(rangeMatch[1], 10) > parseInt(rangeMatch[2], 10)) {
+        issues.push(`Пакет ${packetIndex}: в сегменте "${seg}" минимум больше максимума.`);
+      }
+    });
+  }
+  return issues;
+};
+
 // Shadowsocks-2022 in Xray-core was audited previously and found unstable in true
 // multi-user mode across all supported ciphers -- kept intentionally single-user. See
 // VPNClientEntry doc comment in types.ts.
@@ -626,6 +705,16 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     { awgJc: Number(awgJc), awgJmin: Number(awgJmin), awgJmax: Number(awgJmax), awgS1: Number(awgS1), awgS2: Number(awgS2), awgS3: Number(awgS3), awgS4: Number(awgS4), awgH1, awgH2, awgH3, awgH4 },
     awgVersion
   );
+
+  // AnyTLS advanced settings state -- "default" omits padding_scheme entirely from the
+  // generated config so sing-box falls back to its own built-in scheme; "custom" ships
+  // whatever's in anytlsPaddingScheme (seeded with the real upstream default as a sane
+  // editable starting point, not a placeholder).
+  const [anytlsPaddingMode, setAnytlsPaddingMode] = useState<"default" | "custom">("default");
+  const [anytlsPaddingScheme, setAnytlsPaddingScheme] = useState<string>(ANYTLS_DEFAULT_PADDING_SCHEME.join("\n"));
+  const [anytlsAlpn, setAnytlsAlpn] = useState<string>("");
+  const [anytlsTlsVersion, setAnytlsTlsVersion] = useState<"auto" | "1.2" | "1.3">("auto");
+  const anytlsPaddingIssues = anytlsPaddingMode === "custom" ? validateAnytlsPaddingScheme(anytlsPaddingScheme) : [];
 
   // 3X-UI Full Xray Panel Fine-Tuning Parameters
   const [xrayTransport, setXrayTransport] = useState<"grpc" | "tcp" | "ws" | "http" | "quic">("grpc");
@@ -888,6 +977,11 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
       return;
     }
 
+    if (selectedDeployProtocol.id === "anytls" && anytlsPaddingIssues.length > 0) {
+      toast.error("Некорректная padding_scheme для AnyTLS", anytlsPaddingIssues[0]);
+      return;
+    }
+
     // Generate credentials
     const newUuid = window.crypto?.randomUUID ? window.crypto.randomUUID() : "a" + Math.random().toString(36).substring(2, 10) + "-4f12-9012-" + Math.random().toString(36).substring(2, 12);
     let newPub = "pbk_" + Math.random().toString(36).substring(2, 15);
@@ -1061,23 +1155,44 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
           return buildAwgServerConf(awgServerPriv, awgClientPub, awgEgressIface);
         }
         if (isAnytls) {
+          const tlsObj: any = {
+            enabled: true,
+            server_name: deploySni || "swdist.apple.com",
+            certificate_path: "/etc/sing-box/cert.crt",
+            key_path: "/etc/sing-box/cert.key"
+          };
+          // ALPN: purely a TLS-handshake-level camouflage knob (works even with the
+          // self-signed cert + client-side insecure=1, since ALPN negotiation happens
+          // before any certificate validation) -- makes the handshake look like it's
+          // offering real HTTP/2, rather than a bare/unusual ALPN-less TLS server.
+          const alpnList = anytlsAlpn.trim() ? anytlsAlpn.split(",").map((s) => s.trim()).filter(Boolean) : [];
+          if (alpnList.length > 0) tlsObj.alpn = alpnList;
+          // Pinning min_version === max_version forces exactly that TLS version --
+          // "auto" leaves both unset (sing-box negotiates its own default range).
+          if (anytlsTlsVersion !== "auto") {
+            tlsObj.min_version = anytlsTlsVersion;
+            tlsObj.max_version = anytlsTlsVersion;
+          }
+
+          const inboundObj: any = {
+            type: "anytls",
+            tag: "anytls-in",
+            listen: "::",
+            listen_port: deployPort,
+            users: [{ name: deployClientName, password: newUuid }],
+            tls: tlsObj
+          };
+          // Omitted entirely (not even an empty array) when mode is "default" -- per the
+          // sing-box docs, an empty/unset padding_scheme falls back to its own built-in
+          // default scheme, which is exactly what "default" mode is meant to mean.
+          if (anytlsPaddingMode === "custom") {
+            const paddingLines = anytlsPaddingScheme.split("\n").map((l) => l.trim()).filter((l) => l.length > 0 && !l.startsWith("#"));
+            if (paddingLines.length > 0) inboundObj.padding_scheme = paddingLines;
+          }
+
           return JSON.stringify({
             log: { level: "info", timestamp: true },
-            inbounds: [
-              {
-                type: "anytls",
-                tag: "anytls-in",
-                listen: "::",
-                listen_port: deployPort,
-                users: [{ name: deployClientName, password: newUuid }],
-                tls: {
-                  enabled: true,
-                  server_name: deploySni || "swdist.apple.com",
-                  certificate_path: "/etc/sing-box/cert.crt",
-                  key_path: "/etc/sing-box/cert.key"
-                }
-              }
-            ],
+            inbounds: [inboundObj],
             outbounds: [{ type: "direct", tag: "direct" }]
           }, null, 2);
         }
@@ -2818,7 +2933,120 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                     </div>
                   </div>
 
-                  {/* AnyTLS Protocol doesn't require extra UI options for its reference implementation */}
+                  {/* AnyTLS advanced settings: padding_scheme, ALPN, TLS version pinning */}
+                  {selectedDeployProtocol.id === "anytls" && (
+                    <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl p-3.5 space-y-3.5">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <div className="text-[11px] font-bold text-cyan-300 flex items-center gap-1.5">
+                          <Sliders className="w-3.5 h-3.5" />
+                          <span>Тонкая настройка AnyTLS (sing-box):</span>
+                        </div>
+                        <a
+                          href="https://sing-box.sagernet.org/configuration/inbound/anytls/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-cyan-400 hover:underline font-mono bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded-md flex items-center gap-1"
+                        >
+                          <span>sing-box docs</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+
+                      {/* Padding scheme */}
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] text-slate-400 font-semibold block">
+                          Padding Scheme (маскировка размеров пакетов):
+                        </span>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setAnytlsPaddingMode("default")}
+                            className={`px-2 py-1.5 rounded-lg border text-[10px] font-bold transition text-center ${
+                              anytlsPaddingMode === "default"
+                                ? "bg-cyan-950/40 border-cyan-500/50 text-cyan-300"
+                                : "bg-slate-900 border-slate-800 text-slate-300 hover:border-cyan-500/40"
+                            }`}
+                          >
+                            По умолчанию (sing-box built-in)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAnytlsPaddingMode("custom")}
+                            className={`px-2 py-1.5 rounded-lg border text-[10px] font-bold transition text-center ${
+                              anytlsPaddingMode === "custom"
+                                ? "bg-cyan-950/40 border-cyan-500/50 text-cyan-300"
+                                : "bg-slate-900 border-slate-800 text-slate-300 hover:border-cyan-500/40"
+                            }`}
+                          >
+                            Своя схема
+                          </button>
+                        </div>
+                        {anytlsPaddingMode === "custom" && (
+                          <>
+                            <textarea
+                              value={anytlsPaddingScheme}
+                              onChange={(e) => setAnytlsPaddingScheme(e.target.value)}
+                              rows={9}
+                              spellCheck={false}
+                              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-white font-mono text-[10px] leading-relaxed focus:outline-none focus:border-cyan-500"
+                            />
+                            <div className="flex items-center justify-between">
+                              <p className="text-[9px] text-slate-500">
+                                Формат: "stop=N" или "&lt;номер пакета&gt;=min-max[,c][,min-max...]" (пакет 0 -- только один диапазон, без "c"). См. protocol.md проекта anytls-go.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setAnytlsPaddingScheme(ANYTLS_DEFAULT_PADDING_SCHEME.join("\n"))}
+                                className="text-[9px] px-2 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 shrink-0 ml-2"
+                              >
+                                Сбросить к дефолту
+                              </button>
+                            </div>
+                            {anytlsPaddingIssues.length > 0 && (
+                              <div className="bg-rose-950/40 border border-rose-500/40 rounded-xl p-2.5 space-y-1">
+                                <div className="flex items-center gap-1.5 text-rose-300 text-[10px] font-bold">
+                                  <AlertTriangle className="w-3.5 h-3.5" />
+                                  <span>Некорректная padding_scheme -- деплой заблокирован:</span>
+                                </div>
+                                {anytlsPaddingIssues.map((issue, i) => (
+                                  <div key={i} className="text-[10px] text-rose-300/90 pl-5">-- {issue}</div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {/* ALPN + TLS version */}
+                      <div className="grid grid-cols-2 gap-2 text-[10px]">
+                        <div>
+                          <label className="text-slate-400 font-semibold mb-0.5 block">ALPN (через запятую, необязательно)</label>
+                          <input
+                            type="text"
+                            value={anytlsAlpn}
+                            onChange={(e) => setAnytlsAlpn(e.target.value)}
+                            placeholder="h2,http/1.1"
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-semibold mb-0.5 block">Версия TLS</label>
+                          <select
+                            value={anytlsTlsVersion}
+                            onChange={(e: any) => setAnytlsTlsVersion(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono focus:outline-none focus:border-cyan-500"
+                          >
+                            <option value="auto">Авто (сервер сам согласует)</option>
+                            <option value="1.3">Только TLS 1.3</option>
+                            <option value="1.2">Только TLS 1.2</option>
+                          </select>
+                        </div>
+                      </div>
+                      <p className="text-[9px] text-slate-500">
+                        ALPN и версия TLS -- часть общего TLS-конфига sing-box, а не AnyTLS-специфичные поля; влияют только на форму TLS-handshake (работает даже с self-signed сертификатом и insecure=1 у клиента).
+                      </p>
+                    </div>
+                  )}
 
                   {/* AmneziaWG Specific Fine-Tuning Obfuscation Panel */}
                   {selectedDeployProtocol.id === "amnezia-wg" && (
