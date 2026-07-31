@@ -32,7 +32,25 @@ function loadOrCreateSecrets(): PersistedSecrets {
     return { jwtSecret: envJwt, encryptionKey: envEnc };
   }
 
-  // Try to load previously generated local secrets
+  // In production, refuse to auto-generate/persist secrets to a local file: on ephemeral
+  // hosting (containers, free-tier PaaS like Render) that file is wiped on every
+  // redeploy/restart, silently invalidating all active sessions AND making every previously
+  // encrypted SSH credential permanently undecryptable. Fail fast at boot instead so this is
+  // caught immediately during deployment, not discovered later as "why did all my saved
+  // servers break after a redeploy".
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "[FATAL] JWT_SECRET and ENCRYPTION_KEY must both be set as real environment variables in production " +
+        "(NODE_ENV=production). Auto-generated/file-persisted secrets are disabled in production because " +
+        "they don't survive redeploys/restarts on most hosting platforms, which would invalidate all " +
+        "sessions and make all encrypted SSH credentials unrecoverable. Generate them with:\n" +
+        "  node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\"  (JWT_SECRET)\n" +
+        "  node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"  (ENCRYPTION_KEY)\n" +
+        "and set them in your platform's environment variable settings."
+    );
+  }
+
+  // Try to load previously generated local secrets (dev/self-hosted convenience only)
   if (fs.existsSync(SECRETS_FILE)) {
     try {
       const raw = JSON.parse(fs.readFileSync(SECRETS_FILE, "utf-8"));
@@ -70,4 +88,7 @@ export const CONFIG = {
   DB_FILE: path.join(process.cwd(), "data", "db.json"),
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   ALLOWED_ORIGINS: (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
+  // Direct localhost command execution (bypassing SSH) is a powerful, dangerous feature --
+  // OFF by default everywhere, including dev. See server/services/sshService.ts for details.
+  ALLOW_LOCAL_EXEC: process.env.ALLOW_LOCAL_EXEC === "true",
 };

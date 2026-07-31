@@ -7,7 +7,7 @@ import {
   runSshCommand,
   runPooledSshCommand,
   parseRealLinuxMetrics,
-  isBlockedHost,
+  isBlockedHostAsync,
   METRICS_PROBE_CMD,
   buildDemoMetrics,
 } from "../services/sshService.js";
@@ -37,7 +37,7 @@ sshRouter.post(
       return res.json({ success: true, message: "Подключено к демо-серверу (Ubuntu 24.04 LTS)", latencyMs: 12 });
     }
 
-    if (isBlockedHost(host)) {
+    if (await isBlockedHostAsync(host)) {
       throw new AppError("Подключение к этому адресу запрещено политикой безопасности", 400);
     }
 

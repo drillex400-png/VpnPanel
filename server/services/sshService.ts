@@ -1,6 +1,8 @@
 import { exec } from "child_process";
+import dns from "dns";
 import { Client as SSHClient } from "ssh2";
 import { execPooled } from "./sshPool.js";
+import { CONFIG } from "../config.js";
 
 export interface SshConnectionParams {
   host: string;
@@ -19,16 +21,56 @@ export interface SshExecResult {
 
 // Private/reserved IP ranges that must never be reachable as "remote" SSH targets from
 // this panel's server-side context (protects against SSRF-style abuse of the SSH feature
-// pointing back at internal infrastructure). Localhost is handled separately & intentionally.
+// pointing back at internal infrastructure, or reaching other services on the same private
+// network the panel's own backend happens to run on).
 const BLOCKED_HOST_PATTERNS = [
-  /^169\.254\./, // link-local / cloud metadata endpoint range
+  /^169\.254\./, // link-local / cloud metadata endpoint range (AWS/GCP/Azure metadata IP)
   /^0\.0\.0\.0$/,
-  /^::1$/,
-  /^fe80:/i,
+  /^127\./, // IPv4 loopback (all of 127.0.0.0/8, not just 127.0.0.1)
+  /^10\./, // RFC1918 private range
+  /^172\.(1[6-9]|2\d|3[01])\./, // RFC1918 private range (172.16.0.0/12)
+  /^192\.168\./, // RFC1918 private range
+  /^::1$/, // IPv6 loopback
+  /^::ffff:127\./i, // IPv4-mapped IPv6 loopback
+  /^::ffff:169\.254\./i, // IPv4-mapped IPv6 metadata range
+  /^::ffff:10\./i,
+  /^::ffff:192\.168\./i,
+  /^fe80:/i, // IPv6 link-local
+  /^f[cd][0-9a-f]{0,2}:/i, // IPv6 unique local address (fc00::/7)
 ];
 
-export function isBlockedHost(host: string): boolean {
+function isBlockedIpLiteral(host: string): boolean {
   return BLOCKED_HOST_PATTERNS.some((re) => re.test(host));
+}
+
+// Synchronous, pattern-only check -- kept for callers that can't await (kept intentionally
+// narrow). Prefer `isBlockedHostAsync` wherever possible since it also resolves hostnames.
+export function isBlockedHost(host: string): boolean {
+  return isBlockedIpLiteral(host);
+}
+
+/**
+ * Full SSRF guard: checks the literal host string against blocked IP patterns AND, if the
+ * host is a DNS name rather than an IP literal, resolves it and checks the resulting
+ * addresses too. This closes the gap where a hostname like "internal.example.com" or a
+ * DNS-rebinding domain resolves to a private/metadata IP that the plain string check alone
+ * would miss. Resolution failures are treated as blocked (fail closed) rather than silently
+ * allowed through.
+ */
+export async function isBlockedHostAsync(host: string): Promise<boolean> {
+  if (isBlockedIpLiteral(host)) return true;
+
+  // If it's already an IP literal (didn't match any blocked pattern), no DNS lookup needed.
+  const isIpLiteral = /^[0-9.]+$/.test(host) || /^[0-9a-f:]+$/i.test(host);
+  if (isIpLiteral) return false;
+
+  try {
+    const results = await dns.promises.lookup(host, { all: true, verbatim: true });
+    return results.some((r) => isBlockedIpLiteral(r.address));
+  } catch {
+    // Can't resolve -> can't safely proceed. The SSH connect attempt would fail anyway.
+    return true;
+  }
 }
 
 export async function runSshCommand(
@@ -40,13 +82,25 @@ export async function runSshCommand(
     return handleDemoCommand(command);
   }
 
-  if (isBlockedHost(config.host)) {
+  if (await isBlockedHostAsync(config.host)) {
     return { stdout: "", stderr: "Подключение к этому адресу заблокировано политикой безопасности.", code: 255 };
   }
 
-  // If host is localhost/127.0.0.1 and no SSH key or password is set, execute directly via shell
+  // Direct local shell execution (bypassing SSH entirely) is a powerful, dangerous feature --
+  // it lets an authenticated panel user run arbitrary commands on the machine hosting the
+  // panel itself. It is OFF by default and must be explicitly opted into via
+  // ALLOW_LOCAL_EXEC=true in the environment (e.g. for a trusted self-hosted single-user
+  // setup where the panel intentionally manages its own host). Never enable this on a
+  // shared/multi-tenant deployment.
   const isLocalHost = config.host === "localhost" || config.host === "127.0.0.1" || config.host === "local";
   if (isLocalHost && !config.password && !config.privateKey) {
+    if (!CONFIG.ALLOW_LOCAL_EXEC) {
+      return {
+        stdout: "",
+        stderr: "Прямое выполнение команд на localhost без SSH-учётных данных отключено. Задайте ALLOW_LOCAL_EXEC=true в окружении, если это осознанно нужно, либо укажите пароль/ключ для SSH-подключения даже к локальному хосту.",
+        code: 255,
+      };
+    }
     return new Promise((resolve) => {
       exec(command, { timeout: 15000 }, (err, stdout, stderr) => {
         resolve({
@@ -534,12 +588,14 @@ export async function runPooledSshCommand(
     return handleDemoCommand(command);
   }
 
-  if (isBlockedHost(config.host)) {
+  if (await isBlockedHostAsync(config.host)) {
     return { stdout: "", stderr: "Подключение к этому адресу заблокировано политикой безопасности.", code: 255 };
   }
 
   const isLocalHost = config.host === "localhost" || config.host === "127.0.0.1" || config.host === "local";
   if (isLocalHost && !config.password && !config.privateKey) {
+    // runSshCommand re-checks ALLOW_LOCAL_EXEC and re-validates the host itself, so it's safe
+    // to just delegate here rather than duplicating the gate.
     return runSshCommand(config, command);
   }
 

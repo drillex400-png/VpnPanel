@@ -15,18 +15,42 @@ import { attachMetricsWebSocket } from "./server/services/wsMetrics.js";
 
 const app = express();
 
-// Security headers. CSP is relaxed for the Vite dev-injected inline scripts/styles used by
-// the SPA shell; tighten further once a strict nonce-based CSP is wired into the build.
+// Security headers. In dev, Vite's HMR client needs inline scripts/eval and a websocket
+// connection back to itself, so CSP stays relaxed there. In production the app is a
+// pre-built static SPA bundle (no inline scripts, no eval) served same-origin, so we apply
+// a real CSP -- only Google Fonts (loaded from index.html) need explicit allow-listing.
+const isProd = CONFIG.NODE_ENV === "production";
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: isProd
+      ? {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+            imgSrc: ["'self'", "data:", "blob:"],
+            connectSrc: ["'self'", "wss:", "ws:"],
+            objectSrc: ["'none'"],
+            baseUri: ["'self'"],
+            frameAncestors: ["'none'"],
+            upgradeInsecureRequests: [],
+          },
+        }
+      : false,
     crossOriginEmbedderPolicy: false,
   })
 );
 
 app.use(
   cors({
-    origin: CONFIG.ALLOWED_ORIGINS.length > 0 ? CONFIG.ALLOWED_ORIGINS : true,
+    // Reflecting any Origin with credentials:true lets any malicious site an authenticated
+    // user visits make authenticated cross-origin requests to this API (e.g. run SSH
+    // commands on their servers). Frontend and backend are served same-origin here, so cross-
+    // origin API access is only needed for explicitly configured external consumers. Default
+    // to permissive only in dev for local tooling convenience; production requires an
+    // explicit ALLOWED_ORIGINS allow-list, denying cross-origin requests otherwise.
+    origin: CONFIG.ALLOWED_ORIGINS.length > 0 ? CONFIG.ALLOWED_ORIGINS : !isProd,
     credentials: true,
   })
 );
