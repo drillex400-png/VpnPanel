@@ -403,13 +403,17 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     // Generate protocol specific standard link
     const actualFlow = xrayTransport === "tcp" ? xrayFlow : "none";
     const safeHost = hostName.includes(":") ? `[${hostName}]` : hostName;
+    // Server/client names are free text (can contain spaces, parens, cyrillic, etc.) --
+    // URI fragments must be percent-encoded per RFC 3986, or strict client parsers
+    // (mobile deep-link handlers, QR scanners) will choke on or truncate the link.
+    const encName = (s: string) => encodeURIComponent(s);
     let link = "";
     if (selectedDeployProtocol.id === "anytls") {
-      link = `anytls://${newUuid}@${safeHost}:${deployPort}?sni=${deploySni}&insecure=1#${server.name}-AnyTLS-sing-box`;
+      link = `anytls://${newUuid}@${safeHost}:${deployPort}?sni=${deploySni}&insecure=1#${encName(`${server.name}-AnyTLS-sing-box`)}`;
     } else if (selectedDeployProtocol.id === "amnezia-wg") {
-      link = `awg://${btoa(JSON.stringify({ v: awgVersion, host: safeHost, port: deployPort, uuid: awgPrivateKey, jc: awgJc, jmin: awgJmin, jmax: awgJmax, s1: awgS1, s2: awgS2, h1: awgH1, h2: awgH2, h3: awgH3, h4: awgH4 }))}#${server.name}-AmneziaWG-v${awgVersion}`;
+      link = `awg://${btoa(JSON.stringify({ v: awgVersion, host: safeHost, port: deployPort, uuid: awgPrivateKey, jc: awgJc, jmin: awgJmin, jmax: awgJmax, s1: awgS1, s2: awgS2, h1: awgH1, h2: awgH2, h3: awgH3, h4: awgH4 }))}#${encName(`${server.name}-AmneziaWG-v${awgVersion}`)}`;
     } else if (selectedDeployProtocol.id === "shadowsocks-2022") {
-      link = `ss://${btoa(xraySsCipher + ":" + ss2022Password)}@${safeHost}:${deployPort}#${server.name}-${deployClientName}`;
+      link = `ss://${btoa(xraySsCipher + ":" + ss2022Password)}@${safeHost}:${deployPort}#${encName(`${server.name}-${deployClientName}`)}`;
     } else if (selectedDeployProtocol.id === "xray-vmess-ws") {
       const vmessTls = xraySecurity === "none" ? "" : xraySecurity;
       link = `vmess://${btoa(JSON.stringify({ v: "2", ps: `${server.name}-${deployClientName}`, add: safeHost, port: deployPort, id: newUuid, aid: 0, net: xrayTransport, type: "none", host: xrayWsHost || deploySni, path: xrayWsPath, tls: vmessTls, sni: deploySni }))}`;
@@ -417,7 +421,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
       let query = `type=${xrayTransport}&security=${xraySecurity}&sni=${deploySni}`;
       if (xrayTransport === "grpc") query += `&serviceName=${xrayGrpcServiceName}`;
       if (xrayTransport === "ws") query += `&path=${encodeURIComponent(xrayWsPath)}${xrayWsHost ? `&host=${encodeURIComponent(xrayWsHost)}` : ""}`;
-      link = `trojan://${newUuid}@${safeHost}:${deployPort}?${query}#${server.name}-${deployClientName}`;
+      link = `trojan://${newUuid}@${safeHost}:${deployPort}?${query}#${encName(`${server.name}-${deployClientName}`)}`;
     } else {
       // VLESS REALITY / VLESS TLS
       let query = `type=${xrayTransport}&security=${xraySecurity}&fp=${utlsFingerprint}&sni=${deploySni}`;
@@ -432,7 +436,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
       } else if (xrayTransport === "ws") {
         query += `&path=${encodeURIComponent(xrayWsPath)}${xrayWsHost ? `&host=${encodeURIComponent(xrayWsHost)}` : ""}`;
       }
-      link = `vless://${newUuid}@${safeHost}:${deployPort}?${query}#${server.name}-${deployClientName}`;
+      link = `vless://${newUuid}@${safeHost}:${deployPort}?${query}#${encName(`${server.name}-${deployClientName}`)}`;
     }
 
     // Real SSH Execution if server is not Demo
