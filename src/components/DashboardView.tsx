@@ -1,13 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import { SystemMetrics, SSHConfig } from "../types";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import {
   Cpu,
   HardDrive,
@@ -23,6 +15,23 @@ import {
   ShieldCheck,
   ChevronRight,
 } from "lucide-react";
+
+// Lazy-loaded: recharts is one of the heaviest deps in the app and previously shipped in the
+// main bundle even when the user never opens the Dashboard tab. Now it's only fetched when
+// this graph card actually needs to render.
+const ResourceHistoryChart = lazy(() => import("./ResourceHistoryChart"));
+
+const ChartSkeleton = () => (
+  <div className="w-full h-full flex items-end gap-1.5 px-1 pb-1">
+    {[40, 65, 50, 80, 55, 70, 45, 90, 60, 75, 50, 85].map((h, i) => (
+      <div
+        key={i}
+        className="flex-1 rounded-t-md bg-white/[0.06] animate-pulse"
+        style={{ height: `${h}%`, animationDelay: `${i * 60}ms` }}
+      />
+    ))}
+  </div>
+);
 
 interface DashboardViewProps {
   metrics: SystemMetrics;
@@ -249,48 +258,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="h-56 w-full pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={history}>
-                <defs>
-                  <linearGradient id="cpuGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.45} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
-                  </linearGradient>
-                  <linearGradient id="ramGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.45} />
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={10} domain={[0, 100]} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#090d16",
-                    borderColor: "rgba(255, 255, 255, 0.12)",
-                    borderRadius: "16px",
-                    fontSize: "12px",
-                    color: "#f8fafc",
-                    boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="cpu"
-                  stroke="#10b981"
-                  strokeWidth={2.5}
-                  fillOpacity={1}
-                  fill="url(#cpuGrad)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="ramPct"
-                  stroke="#06b6d4"
-                  strokeWidth={2.5}
-                  fillOpacity={1}
-                  fill="url(#ramGrad)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <Suspense fallback={<ChartSkeleton />}>
+              <ResourceHistoryChart history={history} />
+            </Suspense>
           </div>
         </div>
 

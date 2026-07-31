@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import { TabType, SSHConfig, SystemMetrics } from "./types";
 import {
   getSavedServers,
@@ -14,17 +14,30 @@ import { LoginPage } from "./components/LoginPage";
 import { ToastContainer } from "./components/ToastContainer";
 import { Header } from "./components/Header";
 import { Navigation } from "./components/Navigation";
+// Dashboard is the tab every user lands on first, so it stays eagerly bundled -- no point
+// showing a loading flash for the very first thing they see. Every other tab is fetched on
+// demand via React.lazy(), so opening the app no longer downloads the VPN protocol engine,
+// the file manager, the terminal, etc. before the user has even picked a tab.
 import { DashboardView } from "./components/DashboardView";
-import { FileManagerView } from "./components/FileManagerView";
-import { ProcessesView } from "./components/ProcessesView";
-import { ServicesView } from "./components/ServicesView";
-import { FirewallView } from "./components/FirewallView";
-import { LogsView } from "./components/LogsView";
-import { TerminalView } from "./components/TerminalView";
-import { ToolsView } from "./components/ToolsView";
-import { VPNView } from "./components/VPNView";
 import { ServerConnectModal } from "./components/ServerConnectModal";
 import { Loader2 } from "lucide-react";
+
+const VPNView = lazy(() => import("./components/VPNView").then((m) => ({ default: m.VPNView })));
+const FileManagerView = lazy(() => import("./components/FileManagerView").then((m) => ({ default: m.FileManagerView })));
+const ProcessesView = lazy(() => import("./components/ProcessesView").then((m) => ({ default: m.ProcessesView })));
+const ServicesView = lazy(() => import("./components/ServicesView").then((m) => ({ default: m.ServicesView })));
+const FirewallView = lazy(() => import("./components/FirewallView").then((m) => ({ default: m.FirewallView })));
+const LogsView = lazy(() => import("./components/LogsView").then((m) => ({ default: m.LogsView })));
+const TerminalView = lazy(() => import("./components/TerminalView").then((m) => ({ default: m.TerminalView })));
+const ToolsView = lazy(() => import("./components/ToolsView").then((m) => ({ default: m.ToolsView })));
+
+// Lightweight, theme-matching fallback shown for the brief moment a lazy tab's chunk is
+// being fetched -- avoids a jarring blank flash between tab click and content appearing.
+const ViewLoadingFallback = () => (
+  <div className="flex items-center justify-center py-24 text-slate-500">
+    <Loader2 className="w-6 h-6 animate-spin text-emerald-400/70" />
+  </div>
+);
 
 function Dashboard() {
   const toast = useToast();
@@ -171,21 +184,23 @@ function Dashboard() {
             />
           )}
 
-          {activeTab === "vpn" && <VPNView server={currentServer} />}
+          <Suspense fallback={<ViewLoadingFallback />}>
+            {activeTab === "vpn" && <VPNView server={currentServer} />}
 
-          {activeTab === "files" && <FileManagerView server={currentServer} />}
+            {activeTab === "files" && <FileManagerView server={currentServer} />}
 
-          {activeTab === "processes" && <ProcessesView server={currentServer} />}
+            {activeTab === "processes" && <ProcessesView server={currentServer} />}
 
-          {activeTab === "services" && <ServicesView server={currentServer} />}
+            {activeTab === "services" && <ServicesView server={currentServer} />}
 
-          {activeTab === "firewall" && <FirewallView server={currentServer} />}
+            {activeTab === "firewall" && <FirewallView server={currentServer} />}
 
-          {activeTab === "logs" && <LogsView server={currentServer} />}
+            {activeTab === "logs" && <LogsView server={currentServer} />}
 
-          {activeTab === "terminal" && <TerminalView server={currentServer} />}
+            {activeTab === "terminal" && <TerminalView server={currentServer} />}
 
-          {activeTab === "tools" && <ToolsView server={currentServer} />}
+            {activeTab === "tools" && <ToolsView server={currentServer} />}
+          </Suspense>
         </main>
       </div>
 
