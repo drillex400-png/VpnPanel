@@ -91,4 +91,5 @@ export const CONFIG = {
   // Direct localhost command execution (bypassing SSH) is a powerful, dangerous feature --
   // OFF by default everywhere, including dev. See server/services/sshService.ts for details.
   ALLOW_LOCAL_EXEC: process.env.ALLOW_LOCAL_EXEC === "true",
+  DATABASE_URL: process.env.DATABASE_URL || "",
 };
