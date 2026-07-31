@@ -406,6 +406,159 @@ const buildAwgClientConfShared = (opts: {
   return lines.join("\n");
 };
 
+// ============================================================================================
+// AmneziaWG obfuscation parameter generator
+//
+// Ranges and constraints below come from the widely-deployed bivlked/amneziawg-installer
+// (the de-facto reference for correct AWG 2.0 parameter values -- see its ADVANCED.md param
+// table) cross-checked against the official Amnezia docs (docs.amnezia.org/documentation/
+// amnezia-wg). The H1-H4 non-overlapping-range generation algorithm is adapted directly from
+// a real, working community generator (gist.github.com/ftk/8d179876d5eac47b670190bfbc1b6faa)
+// rather than invented from scratch: allocate h4 first with a huge span (data packets carry
+// the most traffic and benefit most from max entropy), then h3/h2/h1 each checked against
+// all previously-placed ranges, shrinking the candidate span by 25% on every retry so the
+// search is guaranteed to terminate even in worst-case collision runs.
+//
+// Critical correctness facts that were previously violated by this codebase's hardcoded
+// defaults (H1=1..H4=4): those four values are WireGuard's OWN reserved message-type IDs
+// (1=handshake init, 2=handshake response, 3=cookie reply, 4=data) -- setting H1-H4 to them
+// does not obfuscate anything, it reproduces vanilla WireGuard's real headers. Every H value
+// (or range, in 2.0) must be >= 5.
+// ============================================================================================
+
+const randInt = (min: number, max: number): number => {
+  // crypto.getRandomValues for real entropy (this picks obfuscation params meant to defeat
+  // DPI fingerprinting, so Math.random()'s weaker PRNG is worth avoiding even though it's
+  // not a cryptographic secret like a private key).
+  const range = max - min + 1;
+  const buf = new Uint32Array(1);
+  window.crypto.getRandomValues(buf);
+  return min + (buf[0] % range);
+};
+
+const randUint32 = (): number => {
+  const buf = new Uint32Array(1);
+  window.crypto.getRandomValues(buf);
+  return buf[0];
+};
+
+export interface AwgObfuscationParams {
+  awgJc: number; awgJmin: number; awgJmax: number;
+  awgS1: number; awgS2: number; awgS3: number; awgS4: number;
+  awgH1: number | string; awgH2: number | string; awgH3: number | string; awgH4: number | string;
+}
+
+export const generateAwgObfuscationParams = (version: "1.0" | "2.0"): AwgObfuscationParams => {
+  // Jc/Jmin/Jmax: junk-packet count and size range sent before the handshake.
+  const awgJc = randInt(3, 6);
+  const awgJmin = randInt(40, 89);
+  const awgJmax = awgJmin + randInt(50, 250);
+
+  // S1/S2: Init/Response padding. Hard constraint: S1 + 56 !== S2 (148-byte Init + S1 must
+  // never equal 92-byte Response + S2, or the two message types become distinguishable by
+  // size again -- defeats the point of padding them).
+  const awgS1 = randInt(15, 150);
+  let awgS2 = randInt(15, 150);
+  while (awgS2 === awgS1 + 56) awgS2 = randInt(15, 150);
+
+  // S3/S4: Cookie/Data padding -- 2.0 only, sent as 0 (disabled) on 1.0.
+  const awgS3 = version === "2.0" ? randInt(8, 55) : 0;
+  const awgS4 = version === "2.0" ? randInt(4, 27) : 0;
+
+  if (version === "1.0") {
+    // Legacy AWG 1.0: H1-H4 are single fixed values (no range support), just need to be
+    // >=5 and pairwise distinct.
+    const used = new Set<number>();
+    const pick = (): number => {
+      let v = randInt(5, 2147483647);
+      while (used.has(v)) v = randInt(5, 2147483647);
+      used.add(v);
+      return v;
+    };
+    return { awgJc, awgJmin, awgJmax, awgS1, awgS2, awgS3, awgS4, awgH1: pick(), awgH2: pick(), awgH3: pick(), awgH4: pick() };
+  }
+
+  // AWG 2.0: H1-H4 are non-overlapping uint32 RANGES "min-max". Port of the ftk gist
+  // algorithm: place h4 first with the largest span (it's the data-packet header, carries
+  // the most traffic so benefits most from entropy), then h3/h2/h1 in turn, each rejecting
+  // any candidate that overlaps an already-placed range, shrinking span by 25% per retry.
+  const MAX_U32 = 0xffffffff;
+  let span = 1_000_000_000 + randInt(0, 1_000_000_000);
+  const placed: { start: number; end: number }[] = [];
+
+  const overlaps = (start: number, end: number): boolean =>
+    placed.some((r) => (start >= r.start && start <= r.end) || (end >= r.start && end <= r.end) || (r.start >= start && r.start <= end));
+
+  const placeNext = (): { start: number; end: number } => {
+    let start = 0;
+    let end = 0;
+    let attempts = 0;
+    do {
+      start = randUint32();
+      end = start + span;
+      if (start < 5 || end > MAX_U32 || overlaps(start, end)) {
+        span = Math.max(1, span - Math.floor(span / 4));
+        attempts++;
+        continue;
+      }
+      break;
+    } while (attempts < 200); // generous ceiling -- span shrinks geometrically so this always converges well before 200
+    placed.push({ start, end });
+    return { start, end };
+  };
+
+  const h4 = placeNext();
+  const h3 = placeNext();
+  const h2 = placeNext();
+  const h1 = placeNext();
+
+  return {
+    awgJc, awgJmin, awgJmax, awgS1, awgS2, awgS3, awgS4,
+    awgH1: `${h1.start}-${h1.end}`,
+    awgH2: `${h2.start}-${h2.end}`,
+    awgH3: `${h3.start}-${h3.end}`,
+    awgH4: `${h4.start}-${h4.end}`,
+  };
+};
+
+// Validates a set of AWG params against the same hard constraints the generator enforces --
+// used to warn/block the deploy button if a user manually edits values into an invalid state
+// (e.g. typing H1=1 by hand, or S2 = S1+56).
+const parseHRange = (v: number | string): { start: number; end: number } | null => {
+  const s = String(v).trim();
+  const m = s.match(/^(\d+)\s*-\s*(\d+)$/);
+  if (m) return { start: parseInt(m[1], 10), end: parseInt(m[2], 10) };
+  const n = parseInt(s, 10);
+  if (!Number.isNaN(n)) return { start: n, end: n };
+  return null;
+};
+
+const validateAwgParams = (p: AwgObfuscationParams, version: "1.0" | "2.0"): string[] => {
+  const issues: string[] = [];
+  if (p.awgJmax <= p.awgJmin) issues.push("Jmax должен быть больше Jmin.");
+  if (Number(p.awgS1) + 56 === Number(p.awgS2)) issues.push("S1 + 56 не должно равняться S2 (иначе Init и Response пакеты снова станут различимы по размеру).");
+  const hVals = [p.awgH1, p.awgH2, p.awgH3, p.awgH4];
+  const ranges = hVals.map(parseHRange);
+  if (ranges.some((r) => !r)) {
+    issues.push("H1-H4 должны быть числом (v1.0) или диапазоном вида \"min-max\" (v2.0).");
+  } else {
+    const rs = ranges as { start: number; end: number }[];
+    rs.forEach((r, i) => {
+      if (r.start < 5 || r.end < 5) issues.push(`H${i + 1} должен быть >= 5 (значения 1-4 зарезервированы под настоящие типы пакетов WireGuard и отключают обфускацию заголовков).`);
+      if (r.start > r.end) issues.push(`H${i + 1}: минимум диапазона больше максимума.`);
+    });
+    for (let i = 0; i < rs.length; i++) {
+      for (let j = i + 1; j < rs.length; j++) {
+        const a = rs[i], b = rs[j];
+        if (a.start <= b.end && b.start <= a.end) {
+          issues.push(`H${i + 1} и H${j + 1} пересекаются -- диапазоны H1-H4 обязаны быть непересекающимися.`);
+        }
+      }
+    }
+  }
+  return issues;
+};
+
 // Shadowsocks-2022 in Xray-core was audited previously and found unstable in true
 // multi-user mode across all supported ciphers -- kept intentionally single-user. See
 // VPNClientEntry doc comment in types.ts.
@@ -432,15 +585,47 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   
   // AmneziaWG Obfuscation parameters (Version 2.0 vs 1.0, Jc, Jmin, Jmax, S1, S2, H1, H2, H3, H4)
   const [awgVersion, setAwgVersion] = useState<"2.0" | "1.0">("2.0");
-  const [awgJc, setAwgJc] = useState<number>(4);
-  const [awgJmin, setAwgJmin] = useState<number>(40);
-  const [awgJmax, setAwgJmax] = useState<number>(70);
-  const [awgS1, setAwgS1] = useState<number>(15);
-  const [awgS2, setAwgS2] = useState<number>(20);
-  const [awgH1, setAwgH1] = useState<number>(1);
-  const [awgH2, setAwgH2] = useState<number>(2);
-  const [awgH3, setAwgH3] = useState<number>(3);
-  const [awgH4, setAwgH4] = useState<number>(4);
+  // Seeded ONCE from the real generator (see generateAwgObfuscationParams above) instead of
+  // the old hardcoded H1=1..H4=4 -- those are WireGuard's own reserved packet-type IDs and
+  // using them as "obfuscation" headers produced completely unobfuscated vanilla traffic.
+  // This plain (non-lazy) call re-runs on every render but React only consumes it on mount;
+  // the wasted recomputation is a handful of crypto-random ints, not worth memoizing.
+  const initialAwgParams = generateAwgObfuscationParams("2.0");
+  const [awgJc, setAwgJc] = useState<number>(initialAwgParams.awgJc);
+  const [awgJmin, setAwgJmin] = useState<number>(initialAwgParams.awgJmin);
+  const [awgJmax, setAwgJmax] = useState<number>(initialAwgParams.awgJmax);
+  const [awgS1, setAwgS1] = useState<number>(initialAwgParams.awgS1);
+  const [awgS2, setAwgS2] = useState<number>(initialAwgParams.awgS2);
+  const [awgS3, setAwgS3] = useState<number>(initialAwgParams.awgS3);
+  const [awgS4, setAwgS4] = useState<number>(initialAwgParams.awgS4);
+  const [awgH1, setAwgH1] = useState<number | string>(initialAwgParams.awgH1);
+  const [awgH2, setAwgH2] = useState<number | string>(initialAwgParams.awgH2);
+  const [awgH3, setAwgH3] = useState<number | string>(initialAwgParams.awgH3);
+  const [awgH4, setAwgH4] = useState<number | string>(initialAwgParams.awgH4);
+
+  const applyGeneratedAwgParams = (version: "1.0" | "2.0") => {
+    const p = generateAwgObfuscationParams(version);
+    setAwgJc(p.awgJc); setAwgJmin(p.awgJmin); setAwgJmax(p.awgJmax);
+    setAwgS1(p.awgS1); setAwgS2(p.awgS2); setAwgS3(p.awgS3); setAwgS4(p.awgS4);
+    setAwgH1(p.awgH1); setAwgH2(p.awgH2); setAwgH3(p.awgH3); setAwgH4(p.awgH4);
+  };
+
+  // Regenerate valid H1-H4 (+ S3/S4) whenever the protocol VERSION toggles, since 1.0 needs
+  // single distinct values and 2.0 needs non-overlapping ranges -- values from one version
+  // are not meaningful for the other (e.g. a "123-456" range string is not a valid 1.0 H
+  // value, and single small values like the old hardcoded 1-4 aren't real 2.0 ranges).
+  const awgVersionMountRef = useRef(awgVersion);
+  useEffect(() => {
+    if (awgVersionMountRef.current !== awgVersion) {
+      awgVersionMountRef.current = awgVersion;
+      applyGeneratedAwgParams(awgVersion);
+    }
+  }, [awgVersion]);
+
+  const awgParamIssues = validateAwgParams(
+    { awgJc: Number(awgJc), awgJmin: Number(awgJmin), awgJmax: Number(awgJmax), awgS1: Number(awgS1), awgS2: Number(awgS2), awgS3: Number(awgS3), awgS4: Number(awgS4), awgH1, awgH2, awgH3, awgH4 },
+    awgVersion
+  );
 
   // 3X-UI Full Xray Panel Fine-Tuning Parameters
   const [xrayTransport, setXrayTransport] = useState<"grpc" | "tcp" | "ws" | "http" | "quic">("grpc");
@@ -698,6 +883,11 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   const handleStartDeploy = async () => {
     if (!selectedDeployProtocol) return;
 
+    if (selectedDeployProtocol.id === "amnezia-wg" && awgParamIssues.length > 0) {
+      toast.error("Некорректные параметры обфускации AmneziaWG", awgParamIssues[0]);
+      return;
+    }
+
     // Generate credentials
     const newUuid = window.crypto?.randomUUID ? window.crypto.randomUUID() : "a" + Math.random().toString(36).substring(2, 10) + "-4f12-9012-" + Math.random().toString(36).substring(2, 12);
     let newPub = "pbk_" + Math.random().toString(36).substring(2, 15);
@@ -711,12 +901,10 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     const ss2022Bytes = xraySsCipher.includes("128") ? 16 : 32;
     const ss2022Password = isSs2022 ? generateBase64Key(ss2022Bytes) : newUuid;
 
-    // AmneziaWG 2.0 adds S3 (Cookie prefix, 0-64 bytes) and S4 (Data prefix, 0-32 bytes)
-    // on top of 1.0's Jc/Jmin/Jmax/S1/S2/H1-H4. Selecting "1.0" genuinely omits them
-    // (defaults to 0 = no extra obfuscation on those packet types) instead of the
-    // version toggle being purely cosmetic.
-    const awgS3 = awgVersion === "2.0" ? 16 : 0;
-    const awgS4 = awgVersion === "2.0" ? 8 : 0;
+    // AmneziaWG 2.0 adds S3 (Cookie prefix) and S4 (Data prefix) on top of 1.0's
+    // Jc/Jmin/Jmax/S1/S2/H1-H4. Now real, user-configurable, generator-backed state
+    // (awgS3/awgS4) instead of hardcoded constants -- selecting "1.0" still genuinely
+    // omits them (the generator itself returns 0 for both when version !== "2.0").
     // AmneziaWG/WireGuard is a mutual-auth protocol: both server and client need a real
     // X25519 keypair, and each side needs the OTHER side's public key ahead of time (it's
     // not a bearer-token/UUID scheme like Xray). The real keypairs are generated on the
@@ -2682,17 +2870,34 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                         </div>
                       </div>
 
-                      {/* Presets */}
+                      {/* Presets -- all three now pull S1-S4/H1-H4 from the real generator
+                          (generateAwgObfuscationParams) instead of hardcoded/reused values.
+                          Only Jc/Jmin/Jmax (junk volume/size, which genuinely trade off
+                          stealth vs. throughput) differ between presets; H-range placement
+                          and S-padding have no such tradeoff, so they're always freshly
+                          randomized and validated regardless of which preset is picked. */}
                       <div className="space-y-1">
-                        <span className="text-[10px] text-slate-400 font-semibold block">Готовые пресеты маскировки AmneziaWG:</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400 font-semibold block">Готовые пресеты маскировки AmneziaWG:</span>
+                          <button
+                            type="button"
+                            onClick={() => applyGeneratedAwgParams(awgVersion)}
+                            title="Сгенерировать новый случайный набор параметров (сохраняя текущую версию протокола)"
+                            className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-amber-300 font-bold flex items-center gap-1 transition"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Сгенерировать заново</span>
+                          </button>
+                        </div>
                         <div className="grid grid-cols-3 gap-1.5">
                           <button
                             type="button"
                             onClick={() => {
                               setAwgVersion("2.0");
-                              setAwgJc(5); setAwgJmin(50); setAwgJmax(90);
-                              setAwgS1(20); setAwgS2(25);
-                              setAwgH1(1); setAwgH2(2); setAwgH3(3); setAwgH4(4);
+                              const p = generateAwgObfuscationParams("2.0");
+                              setAwgJc(p.awgJc); setAwgJmin(p.awgJmin); setAwgJmax(p.awgJmax);
+                              setAwgS1(p.awgS1); setAwgS2(p.awgS2); setAwgS3(p.awgS3); setAwgS4(p.awgS4);
+                              setAwgH1(p.awgH1); setAwgH2(p.awgH2); setAwgH3(p.awgH3); setAwgH4(p.awgH4);
                             }}
                             className="px-2 py-1.5 rounded-lg border bg-amber-950/40 border-amber-500/50 text-amber-300 text-[10px] font-bold transition text-center hover:bg-amber-900/50"
                           >
@@ -2702,9 +2907,15 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                             type="button"
                             onClick={() => {
                               setAwgVersion("2.0");
-                              setAwgJc(9); setAwgJmin(140); setAwgJmax(280);
-                              setAwgS1(40); setAwgS2(50);
-                              setAwgH1(18); setAwgH2(32); setAwgH3(41); setAwgH4(55);
+                              const p = generateAwgObfuscationParams("2.0");
+                              // Heavier junk volume/size than the default generator range --
+                              // more decoy traffic, at the cost of some throughput. Jmax is
+                              // derived FROM the same jmin value (not a second independent
+                              // random draw) so Jmax > Jmin is guaranteed by construction.
+                              const heavyJmin = randInt(100, 150);
+                              setAwgJc(randInt(7, 10)); setAwgJmin(heavyJmin); setAwgJmax(heavyJmin + randInt(100, 300));
+                              setAwgS1(p.awgS1); setAwgS2(p.awgS2); setAwgS3(p.awgS3); setAwgS4(p.awgS4);
+                              setAwgH1(p.awgH1); setAwgH2(p.awgH2); setAwgH3(p.awgH3); setAwgH4(p.awgH4);
                             }}
                             className="px-2 py-1.5 rounded-lg border bg-slate-900 border-slate-800 text-slate-300 hover:border-amber-500/40 hover:text-amber-300 text-[10px] font-bold transition text-center"
                           >
@@ -2714,9 +2925,14 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                             type="button"
                             onClick={() => {
                               setAwgVersion("2.0");
-                              setAwgJc(2); setAwgJmin(15); setAwgJmax(30);
-                              setAwgS1(8); setAwgS2(8);
-                              setAwgH1(1); setAwgH2(2); setAwgH3(3); setAwgH4(4);
+                              const p = generateAwgObfuscationParams("2.0");
+                              // Lighter junk volume/size than the default generator range --
+                              // less decoy overhead, favors throughput over max stealth. Same
+                              // fix as the preset above: derive jmax from the same jmin draw.
+                              const lightJmin = randInt(10, 30);
+                              setAwgJc(randInt(1, 3)); setAwgJmin(lightJmin); setAwgJmax(lightJmin + randInt(15, 40));
+                              setAwgS1(p.awgS1); setAwgS2(p.awgS2); setAwgS3(p.awgS3); setAwgS4(p.awgS4);
+                              setAwgH1(p.awgH1); setAwgH2(p.awgH2); setAwgH3(p.awgH3); setAwgH4(p.awgH4);
                             }}
                             className="px-2 py-1.5 rounded-lg border bg-slate-900 border-slate-800 text-slate-300 hover:border-amber-500/40 hover:text-amber-300 text-[10px] font-bold transition text-center"
                           >
@@ -2724,6 +2940,18 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                           </button>
                         </div>
                       </div>
+
+                      {awgParamIssues.length > 0 && (
+                        <div className="bg-rose-950/40 border border-rose-500/40 rounded-xl p-2.5 space-y-1">
+                          <div className="flex items-center gap-1.5 text-rose-300 text-[10px] font-bold">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>Некорректные параметры обфускации -- деплой заблокирован:</span>
+                          </div>
+                          {awgParamIssues.map((issue, i) => (
+                            <div key={i} className="text-[10px] text-rose-300/90 pl-5">-- {issue}</div>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Obfuscation inputs grid */}
                       <div className="grid grid-cols-3 gap-2 text-[10px]">
@@ -2760,7 +2988,7 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div className={awgVersion === "2.0" ? "grid grid-cols-4 gap-2 text-[10px]" : "grid grid-cols-2 gap-2 text-[10px]"}>
                         <div>
                           <label className="text-slate-400 font-semibold mb-0.5 block">S1 (Init Packet Junk)</label>
                           <input
@@ -2780,50 +3008,78 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                             className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono focus:outline-none focus:border-amber-500"
                           />
                         </div>
+
+                        {awgVersion === "2.0" && (
+                          <>
+                            <div>
+                              <label className="text-slate-400 font-semibold mb-0.5 block">S3 (Cookie Packet Junk)</label>
+                              <input
+                                type="number"
+                                value={awgS3}
+                                onChange={(e) => setAwgS3(Number(e.target.value))}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono focus:outline-none focus:border-amber-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-slate-400 font-semibold mb-0.5 block">S4 (Data Packet Junk)</label>
+                              <input
+                                type="number"
+                                value={awgS4}
+                                onChange={(e) => setAwgS4(Number(e.target.value))}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono focus:outline-none focus:border-amber-500"
+                              />
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       <div>
                         <span className="text-[10px] text-slate-400 font-semibold block mb-1">
-                          Magic Headers (H1, H2, H3, H4 - подмена заголовков Handshake):
+                          Magic Headers (H1-H4 -- подмена заголовков Handshake{awgVersion === "2.0" ? ", формат диапазона: min-max" : ", целое число >= 5"}):
                         </span>
                         <div className="grid grid-cols-4 gap-1.5 text-[10px]">
                           <div>
                             <span className="text-[9px] text-slate-500 block">H1 (Init)</span>
                             <input
-                              type="number"
+                              type="text"
                               value={awgH1}
-                              onChange={(e) => setAwgH1(Number(e.target.value))}
-                              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-1.5 py-1 text-white font-mono text-center focus:outline-none focus:border-amber-500"
+                              onChange={(e) => setAwgH1(e.target.value)}
+                              placeholder={awgVersion === "2.0" ? "min-max" : "уник. число"}
+                              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-1.5 py-1 text-white font-mono text-center text-[9px] focus:outline-none focus:border-amber-500"
                             />
                           </div>
                           <div>
                             <span className="text-[9px] text-slate-500 block">H2 (Resp)</span>
                             <input
-                              type="number"
+                              type="text"
                               value={awgH2}
-                              onChange={(e) => setAwgH2(Number(e.target.value))}
-                              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-1.5 py-1 text-white font-mono text-center focus:outline-none focus:border-amber-500"
+                              onChange={(e) => setAwgH2(e.target.value)}
+                              placeholder={awgVersion === "2.0" ? "min-max" : "уник. число"}
+                              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-1.5 py-1 text-white font-mono text-center text-[9px] focus:outline-none focus:border-amber-500"
                             />
                           </div>
                           <div>
                             <span className="text-[9px] text-slate-500 block">H3 (Cookie)</span>
                             <input
-                              type="number"
+                              type="text"
                               value={awgH3}
-                              onChange={(e) => setAwgH3(Number(e.target.value))}
-                              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-1.5 py-1 text-white font-mono text-center focus:outline-none focus:border-amber-500"
+                              onChange={(e) => setAwgH3(e.target.value)}
+                              placeholder={awgVersion === "2.0" ? "min-max" : "уник. число"}
+                              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-1.5 py-1 text-white font-mono text-center text-[9px] focus:outline-none focus:border-amber-500"
                             />
                           </div>
                           <div>
                             <span className="text-[9px] text-slate-500 block">H4 (Data)</span>
                             <input
-                              type="number"
+                              type="text"
                               value={awgH4}
-                              onChange={(e) => setAwgH4(Number(e.target.value))}
-                              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-1.5 py-1 text-white font-mono text-center focus:outline-none focus:border-amber-500"
+                              onChange={(e) => setAwgH4(e.target.value)}
+                              placeholder={awgVersion === "2.0" ? "min-max" : "уник. число"}
+                              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-1.5 py-1 text-white font-mono text-center text-[9px] focus:outline-none focus:border-amber-500"
                             />
                           </div>
                         </div>
+                        <p className="text-[9px] text-slate-500 mt-1">H1-H4 обязаны быть непересекающимися и не входить в 1-4 (зарезервировано WireGuard) -- используй "Сгенерировать заново" выше, если правил не помнишь наизусть.</p>
                       </div>
                     </div>
                   )}
