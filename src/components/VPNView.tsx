@@ -550,14 +550,14 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
               ]
             };
           } else if (protoName === "shadowsocks") {
+            // Single-user mode: password lives at the top level (no clients[] wrapper).
+            // Multi-user SS-2022 mode restricts ciphers to blake3-aes-*-gcm only on current
+            // Xray-core, which would silently break the chacha20-poly1305 option -- and this
+            // panel only ever provisions one client per install anyway.
             inboundSettings = {
-              clients: [
-                {
-                  method: xraySsCipher,
-                  password: ss2022Password,
-                  email: `${deployClientName}@3x-ui`
-                }
-              ],
+              method: xraySsCipher,
+              password: ss2022Password,
+              email: `${deployClientName}@3x-ui`,
               network: "tcp,udp"
             };
           }
