@@ -12,6 +12,7 @@ import {
   buildDemoMetrics,
 } from "../services/sshService.js";
 import { poolKey } from "../services/sshPool.js";
+import { applyAccurateRates } from "../services/metricsRateTracker.js";
 import { resolveServerConnection, DEMO_SERVER_ID } from "./servers.js";
 import { audit } from "../services/audit.js";
 
@@ -97,6 +98,7 @@ sshRouter.post(
     }
 
     const parsedMetrics = parseRealLinuxMetrics(result.stdout, conn.name || conn.host);
+    applyAccurateRates(poolKey(req.user!.userId, serverId), parsedMetrics);
     res.json(parsedMetrics);
   })
 );

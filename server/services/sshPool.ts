@@ -1,4 +1,5 @@
 import { Client as SSHClient } from "ssh2";
+import { clearRateTracking } from "./metricsRateTracker.js";
 
 export interface SshConnConfig {
   host: string;
@@ -101,7 +102,10 @@ export function getPooledConnection(key: string, config: SshConnConfig): Promise
       settled = true;
       rejectReady(err);
     }
-    if (pool.get(key) === entry) pool.delete(key);
+    if (pool.get(key) === entry) {
+      pool.delete(key);
+      clearRateTracking(key);
+    }
   });
 
   conn.on("close", () => {
@@ -109,7 +113,10 @@ export function getPooledConnection(key: string, config: SshConnConfig): Promise
       settled = true;
       rejectReady(new Error("SSH-соединение закрыто до готовности"));
     }
-    if (pool.get(key) === entry) pool.delete(key);
+    if (pool.get(key) === entry) {
+      pool.delete(key);
+      clearRateTracking(key);
+    }
   });
 
   try {
@@ -177,6 +184,7 @@ export function closePooledConnection(key: string): void {
       // ignore
     }
     pool.delete(key);
+    clearRateTracking(key);
   }
 }
 

@@ -442,6 +442,42 @@ export function parseRealLinuxMetrics(raw: string, fallbackHost: string) {
     activeConnections = parseInt(numMatch[0]) || 12;
   }
 
+  // Raw CPU jiffy counters from /proc/stat's aggregate "cpu " line, e.g.
+  // "cpu  123 4 567 8901 23 0 4 0 0 0" -- user nice system idle iowait irq softirq steal...
+  // A single snapshot only tells you *cumulative* ticks since boot, not a usage rate; a real
+  // percentage needs two snapshots diffed over the elapsed time between them (see
+  // metricsRateTracker.ts, which both the HTTP /api/ssh/metrics route and the live WS stream
+  // run this through). Kept as raw counters here -- the loadavg-derived `usagePct` above
+  // remains as a same-snapshot fallback for the very first poll, before any diff exists yet.
+  const statLine = (sections["STAT"] || "").trim();
+  const statParts = statLine.replace(/^cpu\s+/, "").split(/\s+/).map(Number);
+  const cpuTicks = {
+    user: statParts[0] || 0,
+    nice: statParts[1] || 0,
+    system: statParts[2] || 0,
+    idle: statParts[3] || 0,
+    iowait: statParts[4] || 0,
+    irq: statParts[5] || 0,
+    softirq: statParts[6] || 0,
+    steal: statParts[7] || 0,
+  };
+
+  // Raw cumulative RX/TX byte counters from /proc/net/dev, summed across every interface
+  // except loopback -- same "needs a diff over time" caveat as the CPU ticks above.
+  let rxBytes = 0;
+  let txBytes = 0;
+  const netDevLines = (sections["NETDEV"] || "").trim().split("\n");
+  for (const netLine of netDevLines) {
+    const ifaceMatch = netLine.match(/^\s*([\w.:-]+):\s*(.+)$/);
+    if (!ifaceMatch) continue;
+    const iface = ifaceMatch[1];
+    if (iface === "lo") continue; // exclude loopback -- not real external traffic
+    const fields = ifaceMatch[2].trim().split(/\s+/).map(Number);
+    if (fields.length < 9) continue;
+    rxBytes += fields[0] || 0; // field 0 = receive bytes
+    txBytes += fields[8] || 0; // field 8 = transmit bytes (9th column, receive has 8 fields first)
+  }
+
   return {
     timestamp: new Date().toLocaleTimeString(),
     os: {
@@ -467,10 +503,16 @@ export function parseRealLinuxMetrics(raw: string, fallbackHost: string) {
     },
     disk: diskList,
     network: {
-      rxKbps: Math.floor(100 + Math.random() * 300),
-      txKbps: Math.floor(300 + Math.random() * 600),
+      // Same-snapshot fallback (no diff possible yet) -- overwritten with real
+      // delta-derived rates by metricsRateTracker.ts once a previous sample exists.
+      rxKbps: 0,
+      txKbps: 0,
       activeConnections,
     },
+    // Raw counters for metricsRateTracker.ts to diff against the previous poll. Not part of
+    // the SystemMetrics contract the frontend types declare -- harmless extra JSON field,
+    // stripped back out before the object is ever sent to the client (see callers).
+    _raw: { cpuTicks, rxBytes, txBytes, sampledAt: Date.now() },
   };
 }
 
@@ -517,6 +559,8 @@ export const METRICS_PROBE_CMD = `
   echo "===FREE==="; free -b 2>/dev/null || free -m 2>/dev/null
   echo "===DF==="; df -P -k 2>/dev/null
   echo "===NETSTAT==="; netstat -an 2>/dev/null | grep ESTABLISHED | wc -l 2>/dev/null || echo "8"
+  echo "===STAT==="; head -n 1 /proc/stat 2>/dev/null
+  echo "===NETDEV==="; cat /proc/net/dev 2>/dev/null
 `;
 
 /** Same synthetic-but-live-feeling demo metrics payload the HTTP route has always returned. */

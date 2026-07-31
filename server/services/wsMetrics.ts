@@ -6,6 +6,7 @@ import type { AuthTokenPayload } from "../middleware/auth.js";
 import { resolveServerConnection, DEMO_SERVER_ID } from "../routes/servers.js";
 import { runPooledSshCommand, parseRealLinuxMetrics, METRICS_PROBE_CMD, buildDemoMetrics } from "./sshService.js";
 import { poolKey } from "./sshPool.js";
+import { applyAccurateRates } from "./metricsRateTracker.js";
 
 const METRICS_INTERVAL_MS = 4000;
 const WS_PATH_RE = /^\/ws\/metrics\/([A-Za-z0-9_-]+)$/;
@@ -79,6 +80,7 @@ export function attachMetricsWebSocket(server: HttpServer): WebSocketServer {
         }
 
         const parsed = parseRealLinuxMetrics(result.stdout, conn.name || conn.host);
+        applyAccurateRates(key, parsed);
         ws.send(JSON.stringify(parsed));
       } catch (e: any) {
         if (ws.readyState === WebSocket.OPEN) {
