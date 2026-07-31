@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { SSHConfig, VPNProtocolCatalog, InstalledVPNService, VPNAssistantMessage } from "../types";
 import { execCommand, authFetch } from "../services/api";
 import { useToast } from "../contexts/ToastContext";
+import { runDeployPipeline, DeployStep } from "../utils/deployPipeline";
 import { QRCodeSVG } from "./QRCodeSVG";
 import {
   ShieldCheck,
@@ -433,10 +434,10 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
       }
       setDeployLogs((prev) => [...prev, `[SUCCESS] Демо-деплой завершён (симуляция, реальные команды не выполнялись).`]);
     } else {
-      // Real server: show what we're about to do, but do NOT claim success --
-      // that only happens after the actual SSH script runs and we verify the
-      // service is really active on the target machine.
-      setDeployLogs((prev) => [...prev, ...preSteps, `[SSH] Выполнение установочного скрипта на сервере (может занять 1-3 минуты)...`]);
+      // Real server: do NOT dump a fake "steps completed" log up front -- each phase below
+      // is executed and verified against the actual server one at a time, and only the real
+      // pipeline log lines (from runDeployPipeline) get appended from here on.
+      setDeployLogs((prev) => [...prev, `[SSH] Запускаю пошаговый деплой ${selectedDeployProtocol.name} (может занять 1-3 минуты)...`]);
     }
 
     // Generate protocol specific standard link
@@ -483,27 +484,96 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     }
 
     // Real SSH Execution if server is not Demo
+    // Real SSH Execution if server is not Demo -- orchestrated as discrete, verified steps
+    // (see src/utils/deployPipeline.ts) instead of one giant bash script whose only real
+    // check used to be a single `systemctl is-active` at the very end. Each step here is
+    // verified against actual server state, and if any step fails, everything already
+    // applied (firewall rule, config file, etc.) is rolled back automatically.
     if (!server.isDemo) {
-      try {
-        let configJson = "";
-        if (selectedDeployProtocol.id === "anytls") {
-          configJson = JSON.stringify({
-            log: {
-              level: "info",
-              timestamp: true
-            },
+      const isXrayFamily = selectedDeployProtocol.id.includes("xray") || selectedDeployProtocol.id === "shadowsocks-2022";
+      const isAnytls = selectedDeployProtocol.id === "anytls";
+      const isAwg = selectedDeployProtocol.id === "amnezia-wg";
+      const isRealityProtocol = selectedDeployProtocol.id === "xray-vless-reality";
+      const isUdp2 = isAwg;
+      const proto2 = isUdp2 ? "udp" : "tcp";
+
+      let configPathPrefix = "/etc";
+      let serviceDir = selectedDeployProtocol.id;
+      let serviceName: string = selectedDeployProtocol.id;
+      let configFile = "config.json";
+      if (isXrayFamily) {
+        configPathPrefix = "/usr/local/etc";
+        serviceDir = "xray";
+        serviceName = "xray";
+      } else if (isAnytls) {
+        configPathPrefix = "/etc";
+        serviceDir = "sing-box";
+        serviceName = "sing-box";
+      } else if (isAwg) {
+        serviceDir = "amnezia/amneziawg";
+        serviceName = "awg-quick@awg0";
+        configFile = "awg0.conf";
+      }
+      const confPath = `${configPathPrefix}/${serviceDir}/${configFile}`;
+      const secondaryPath = isAwg ? "/etc/wireguard/awg0.conf" : (serviceDir === "xray" ? "/etc/xray/config.json" : "");
+
+      // Populated by the "keygen" step's verify() below, read (by closure reference) later
+      // by write_config -- so the config can embed REAL keys directly instead of writing a
+      // placeholder that gets sed-patched afterwards.
+      let realityServerPriv = "";
+      let realityServerPub = "";
+      let awgServerPriv = "";
+      let awgServerPub = "";
+      let awgClientPriv = "";
+      let awgClientPub = "";
+      let awgEgressIface = "eth0";
+      let portRuleExisted = true; // default true = safest (never delete a rule we didn't add)
+      let serviceRestartAttempted = false;
+
+      const buildAwgServerConf = (serverPriv: string, clientPub: string, egressIface: string) => {
+        const lines = [
+          "[Interface]",
+          "Address = 10.29.29.1/24",
+          `ListenPort = ${deployPort}`,
+          `PrivateKey = ${serverPriv}`,
+          `Jc = ${awgJc}`,
+          `Jmin = ${awgJmin}`,
+          `Jmax = ${awgJmax}`,
+          `S1 = ${awgS1}`,
+          `S2 = ${awgS2}`,
+        ];
+        if (awgVersion === "2.0") {
+          lines.push(`S3 = ${awgS3}`, `S4 = ${awgS4}`);
+        }
+        lines.push(
+          `H1 = ${awgH1}`,
+          `H2 = ${awgH2}`,
+          `H3 = ${awgH3}`,
+          `H4 = ${awgH4}`,
+          `PostUp = iptables -A FORWARD -i awg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o ${egressIface} -j MASQUERADE`,
+          `PostDown = iptables -D FORWARD -i awg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o ${egressIface} -j MASQUERADE`,
+          "",
+          "[Peer]",
+          `PublicKey = ${clientPub}`,
+          "AllowedIPs = 10.29.29.2/32"
+        );
+        return lines.join("\n");
+      };
+
+      const buildDeployConfigContent = (): string => {
+        if (isAwg) {
+          return buildAwgServerConf(awgServerPriv, awgClientPub, awgEgressIface);
+        }
+        if (isAnytls) {
+          return JSON.stringify({
+            log: { level: "info", timestamp: true },
             inbounds: [
               {
                 type: "anytls",
                 tag: "anytls-in",
                 listen: "::",
                 listen_port: deployPort,
-                users: [
-                  {
-                    name: deployClientName,
-                    password: newUuid
-                  }
-                ],
+                users: [{ name: deployClientName, password: newUuid }],
                 tls: {
                   enabled: true,
                   server_name: deploySni || "swdist.apple.com",
@@ -512,255 +582,160 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
                 }
               }
             ],
-            outbounds: [
-              {
-                type: "direct",
-                tag: "direct"
-              }
-            ]
+            outbounds: [{ type: "direct", tag: "direct" }]
           }, null, 2);
-        } else if (selectedDeployProtocol.id === "amnezia-wg") {
-          // AmneziaWG's real config is plain WireGuard-style INI, not JSON, and it needs a
-          // genuine server keypair plus a [Peer] block for the client -- none of which can
-          // be known before the server generates its own keys. So instead of pre-building
-          // configJson here, the whole awg0.conf gets written inline further down in the
-          // AmneziaWG install block of bashScript, right after `awg genkey` runs on the box.
-          configJson = "";
-        } else {
-          // Full Xray Configuration Engine
+        }
 
-          const destOverride: string[] = [];
-          if (xraySniffingHttp) destOverride.push("http");
-          if (xraySniffingTls) destOverride.push("tls");
-          if (xraySniffingQuic) destOverride.push("quic");
-          if (xraySniffingFakedns) destOverride.push("fakedns");
+        // Full Xray Configuration Engine (VLESS/VMess/Trojan/Shadowsocks-2022)
+        const destOverride: string[] = [];
+        if (xraySniffingHttp) destOverride.push("http");
+        if (xraySniffingTls) destOverride.push("tls");
+        if (xraySniffingQuic) destOverride.push("quic");
+        if (xraySniffingFakedns) destOverride.push("fakedns");
 
-          let protoName = "vless";
-          if (selectedDeployProtocol.id === "xray-vmess-ws") protoName = "vmess";
-          else if (selectedDeployProtocol.id === "xray-trojan-grpc") protoName = "trojan";
-          else if (selectedDeployProtocol.id === "shadowsocks-2022") protoName = "shadowsocks";
+        let protoName = "vless";
+        if (selectedDeployProtocol.id === "xray-vmess-ws") protoName = "vmess";
+        else if (selectedDeployProtocol.id === "xray-trojan-grpc") protoName = "trojan";
+        else if (selectedDeployProtocol.id === "shadowsocks-2022") protoName = "shadowsocks";
 
-          let inboundSettings: any = {};
-          if (protoName === "vless") {
-            inboundSettings = {
-              clients: [
-                {
-                  id: newUuid,
-                  flow: actualFlow !== "none" ? actualFlow : undefined,
-                  email: `${deployClientName}@xray`
-                }
-              ],
-              decryption: "none"
-            };
-          } else if (protoName === "vmess") {
-            inboundSettings = {
-              clients: [
-                {
-                  id: newUuid,
-                  alterId: 0,
-                  email: `${deployClientName}@xray`
-                }
-              ]
-            };
-          } else if (protoName === "trojan") {
-            inboundSettings = {
-              clients: [
-                {
-                  password: newUuid,
-                  email: `${deployClientName}@xray`
-                }
-              ]
-            };
-          } else if (protoName === "shadowsocks") {
-            // Single-user mode: password lives at the top level (no clients[] wrapper).
-            // Multi-user SS-2022 mode restricts ciphers to blake3-aes-*-gcm only on current
-            // Xray-core, which would silently break the chacha20-poly1305 option -- and this
-            // panel only ever provisions one client per install anyway.
-            inboundSettings = {
-              method: xraySsCipher,
-              password: ss2022Password,
-              email: `${deployClientName}@xray`,
-              network: "tcp,udp"
-            };
-          }
+        const actualFlow2 = xrayTransport === "tcp" ? xrayFlow : "none";
 
-          let streamSettings: any = {
-            network: xrayTransport,
-            security: xraySecurity
+        let inboundSettings: any = {};
+        if (protoName === "vless") {
+          inboundSettings = {
+            clients: [{ id: newUuid, flow: actualFlow2 !== "none" ? actualFlow2 : undefined, email: `${deployClientName}@xray` }],
+            decryption: "none"
           };
+        } else if (protoName === "vmess") {
+          inboundSettings = { clients: [{ id: newUuid, alterId: 0, email: `${deployClientName}@xray` }] };
+        } else if (protoName === "trojan") {
+          inboundSettings = { clients: [{ password: newUuid, email: `${deployClientName}@xray` }] };
+        } else if (protoName === "shadowsocks") {
+          inboundSettings = { method: xraySsCipher, password: ss2022Password, email: `${deployClientName}@xray`, network: "tcp,udp" };
+        }
 
-          if (xraySecurity === "reality") {
-            streamSettings.realitySettings = {
-              show: false,
-              dest: xrayDest || `${deploySni}:443`,
-              xver: 0,
-              serverNames: [deploySni],
-              privateKey: "PRIVATE_KEY_PLACEHOLDER", // Will be replaced by bash script
-              shortIds: [xrayShortId || "6ba7b810"],
-              fingerprint: utlsFingerprint
-            };
-          } else if (xraySecurity === "tls") {
-            streamSettings.tlsSettings = {
-              serverName: deploySni,
-              alpn: xrayAlpn.split(",").map((s) => s.trim()),
-              certificates: [
-                {
-                  certificateFile: "/etc/xray/cert.crt",
-                  keyFile: "/etc/xray/cert.key"
-                }
-              ]
-            };
-          }
+        let streamSettings: any = { network: xrayTransport, security: xraySecurity };
+        if (xraySecurity === "reality") {
+          streamSettings.realitySettings = {
+            show: false,
+            dest: xrayDest || `${deploySni}:443`,
+            xver: 0,
+            serverNames: [deploySni],
+            // Real server-generated key, obtained by the "keygen" step above -- no more
+            // placeholder + sed-patch dance.
+            privateKey: realityServerPriv || "MISSING_REALITY_KEY",
+            shortIds: [xrayShortId || "6ba7b810"],
+            fingerprint: utlsFingerprint
+          };
+        } else if (xraySecurity === "tls") {
+          streamSettings.tlsSettings = {
+            serverName: deploySni,
+            alpn: xrayAlpn.split(",").map((s) => s.trim()),
+            certificates: [{ certificateFile: "/etc/xray/cert.crt", keyFile: "/etc/xray/cert.key" }]
+          };
+        }
+        if (xrayTransport === "grpc") {
+          streamSettings.grpcSettings = { serviceName: xrayGrpcServiceName || "grpc-vless", multiMode: xrayGrpcMultiMode };
+        } else if (xrayTransport === "ws") {
+          streamSettings.wsSettings = { path: xrayWsPath || "/ws", headers: xrayWsHost ? { Host: xrayWsHost } : {} };
+        }
 
-          if (xrayTransport === "grpc") {
-            streamSettings.grpcSettings = {
-              serviceName: xrayGrpcServiceName || "grpc-vless",
-              multiMode: xrayGrpcMultiMode
-            };
-          } else if (xrayTransport === "ws") {
-            streamSettings.wsSettings = {
-              path: xrayWsPath || "/ws",
-              headers: xrayWsHost ? { Host: xrayWsHost } : {}
-            };
-          }
+        const routingRules: any[] = [];
+        if (xrayBlockP2p) routingRules.push({ type: "field", protocol: ["bittorrent"], outboundTag: "block" });
+        if (xrayBlockAds) routingRules.push({ type: "field", outboundTag: "block", domain: ["geosite:category-ads-all"] });
+        if (xrayBlockPrivateIp) routingRules.push({ type: "field", outboundTag: "block", ip: ["geoip:private"] });
 
-          const routingRules: any[] = [];
-          if (xrayBlockP2p) {
-            routingRules.push({
-              type: "field",
-              protocol: ["bittorrent"],
-              outboundTag: "block"
-            });
-          }
-          if (xrayBlockAds) {
-            routingRules.push({
-              type: "field",
-              outboundTag: "block",
-              domain: ["geosite:category-ads-all"]
-            });
-          }
-          if (xrayBlockPrivateIp) {
-            routingRules.push({
-              type: "field",
-              outboundTag: "block",
-              ip: ["geoip:private"]
-            });
-          }
-
-          configJson = JSON.stringify({
-            log: { loglevel: "warning" },
-            inbounds: [
-              {
-                listen: "0.0.0.0",
-                port: deployPort,
-                protocol: protoName,
-                settings: inboundSettings,
-                streamSettings: streamSettings,
-                sniffing: xraySniffing ? {
-                  enabled: true,
-                  destOverride: destOverride.length > 0 ? destOverride : ["http", "tls"],
-                  metadataOnly: false,
-                  routeOnly: xrayRouteOnly
-                } : { enabled: false }
-              }
-            ],
-            outbounds: [
-              {
-                protocol: "freedom",
-                tag: "direct",
-                settings: {
-                  domainStrategy: xrayPreferIpv4 ? "UseIPv4" : xrayDomainStrategy
-                }
-              },
-              {
-                protocol: "blackhole",
-                tag: "block",
-                settings: { response: { type: "none" } }
-              }
-            ],
-            routing: {
-              domainStrategy: xrayDomainStrategy,
-              rules: routingRules
+        return JSON.stringify({
+          log: { loglevel: "warning" },
+          inbounds: [
+            {
+              listen: "0.0.0.0",
+              port: deployPort,
+              protocol: protoName,
+              settings: inboundSettings,
+              streamSettings: streamSettings,
+              sniffing: xraySniffing
+                ? { enabled: true, destOverride: destOverride.length > 0 ? destOverride : ["http", "tls"], metadataOnly: false, routeOnly: xrayRouteOnly }
+                : { enabled: false }
             }
-          }, null, 2);
-        }
+          ],
+          outbounds: [
+            { protocol: "freedom", tag: "direct", settings: { domainStrategy: xrayPreferIpv4 ? "UseIPv4" : xrayDomainStrategy } },
+            { protocol: "blackhole", tag: "block", settings: { response: { type: "none" } } }
+          ],
+          routing: { domainStrategy: xrayDomainStrategy, rules: routingRules }
+        }, null, 2);
+      };
 
-        const isUdp = selectedDeployProtocol.id === "amnezia-wg";
-        let configPathPrefix = "/etc";
-        let serviceDir = selectedDeployProtocol.id;
-        let serviceName = selectedDeployProtocol.id;
-        let configFile = "config.json";
+      const steps: DeployStep[] = [];
 
-        if (selectedDeployProtocol.id.includes("xray") || selectedDeployProtocol.id === "shadowsocks-2022") {
-          configPathPrefix = "/usr/local/etc";
-          serviceDir = "xray";
-          serviceName = "xray";
-        } else if (selectedDeployProtocol.id === "anytls") {
-          configPathPrefix = "/etc";
-          serviceDir = "sing-box";
-          serviceName = "sing-box";
-          configFile = "config.json";
-        } else if (selectedDeployProtocol.id === "amnezia-wg") {
-          serviceDir = "amnezia/amneziawg"; // Standard for awg-quick
-          serviceName = "awg-quick@awg0";
-          configFile = "awg0.conf";
-        }
-
-        const bashScript = `
-          # Base packages setup
+      // --- Step 1: base packages + kernel tuning + firewall rule ---
+      steps.push({
+        key: "prep",
+        label: "Установка базовых пакетов, настройка сети (BBR) и firewall",
+        run: () => execCommand(server, `
           sudo apt-get update -y && sudo apt-get install -y curl wget jq unzip ufw software-properties-common openssl iptables
-          
-          # Kernel & Network Tuning: IP Forwarding + BBR Congestion Control
+          ${enableBbr ? `
           sudo sysctl -w net.ipv4.ip_forward=1
           sudo sysctl -w net.core.default_qdisc=fq
           sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
           sudo mkdir -p /etc/sysctl.d
-          echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.d/99-vpn.conf >/dev/null
-          echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.d/99-vpn.conf >/dev/null
-          echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.d/99-vpn.conf >/dev/null
+          grep -q "net.ipv4.ip_forward=1" /etc/sysctl.d/99-vpn.conf 2>/dev/null || echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.d/99-vpn.conf >/dev/null
+          grep -q "net.core.default_qdisc=fq" /etc/sysctl.d/99-vpn.conf 2>/dev/null || echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.d/99-vpn.conf >/dev/null
+          grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.d/99-vpn.conf 2>/dev/null || echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.d/99-vpn.conf >/dev/null
           sudo sysctl -p /etc/sysctl.d/99-vpn.conf 2>/dev/null || true
-
-          # Firewall UFW rule
-          sudo ufw allow ${deployPort}/${isUdp ? "udp" : "tcp"} 2>/dev/null || true
-
-          ${selectedDeployProtocol.id.includes("xray") || selectedDeployProtocol.id === "shadowsocks-2022" ? `
-          # Install official Xray-core release (XTLS/Xray-install)
-          bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u root
-          
-          # Ensure directories and fallback self-signed SSL cert for TLS modes
-          sudo mkdir -p /etc/xray /usr/local/etc/xray
-          if [ ! -f /etc/xray/cert.crt ]; then
-            sudo openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/xray/cert.key -out /etc/xray/cert.crt -days 3650 -subj "/CN=${deploySni}" 2>/dev/null || true
-          fi
           ` : ""}
+          sudo ufw status | grep -q "${deployPort}/${proto2}" && echo "PORT_RULE_EXISTED:YES" || echo "PORT_RULE_EXISTED:NO"
+          sudo ufw allow ${deployPort}/${proto2} 2>/dev/null || true
+          command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 && echo DEPS_OK || echo DEPS_MISSING
+        `),
+        verify: (res) => {
+          portRuleExisted = res.stdout.includes("PORT_RULE_EXISTED:YES");
+          if (!res.stdout.includes("DEPS_OK")) return `Не удалось установить базовые зависимости (curl/jq/openssl) -- проверь доступ apt на сервере.${res.stderr ? ` (${res.stderr.slice(-200)})` : ""}`;
+          return null;
+        },
+        rollback: async () => {
+          if (!portRuleExisted) {
+            await execCommand(server, `sudo ufw delete allow ${deployPort}/${proto2} 2>/dev/null || true`);
+          }
+        },
+      });
 
-          ${selectedDeployProtocol.id === "anytls" ? `
-          # Install official sing-box Core for AnyTLS from official SagerNet repository
-          echo "[sing-box] Installing latest official sing-box core for AnyTLS..."
-          sudo mkdir -p /etc/sing-box /usr/local/bin
-
-          # AnyTLS is always TLS-wrapped on the wire (tls is a required inbound field) --
-          # generate a self-signed cert if we don't already have one, same as the xray path.
-          if [ ! -f /etc/sing-box/cert.crt ]; then
-            sudo openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/sing-box/cert.key -out /etc/sing-box/cert.crt -days 3650 -subj "/CN=${deploySni}" 2>/dev/null || true
-          fi
-          
-          if ! command -v sing-box >/dev/null 2>&1; then
-            curl -fsSL https://sing-box.app/install.sh | sh -s -- 2>/dev/null || {
-              SINGBOX_URL=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.assets[] | select(.name | contains("linux") and contains("amd64.tar.gz")) | .browser_download_url' 2>/dev/null | head -n 1)
-              if [ -n "$SINGBOX_URL" ] && [ "$SINGBOX_URL" != "null" ]; then
-                curl -sL "$SINGBOX_URL" -o /tmp/sing-box.tar.gz
-                tar -xzf /tmp/sing-box.tar.gz -C /tmp/ 2>/dev/null || true
-                sudo mv /tmp/sing-box-*/sing-box /usr/local/bin/sing-box 2>/dev/null || true
-                sudo chmod +x /usr/local/bin/sing-box 2>/dev/null || true
-                rm -rf /tmp/sing-box*
+      // --- Step 2: install protocol binary ---
+      steps.push({
+        key: "install_binary",
+        label: `Установка ${selectedDeployProtocol.name}`,
+        run: () => {
+          if (isXrayFamily) {
+            return execCommand(server, `
+              bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u root
+              sudo mkdir -p /etc/xray /usr/local/etc/xray
+              if [ ! -f /etc/xray/cert.crt ]; then
+                sudo openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/xray/cert.key -out /etc/xray/cert.crt -days 3650 -subj "/CN=${deploySni}" 2>/dev/null || true
               fi
-            }
-          fi
-
-          # Systemd unit for sing-box AnyTLS
-          if [ ! -f /etc/systemd/system/sing-box.service ]; then
-            echo "[Unit]
+              command -v xray >/dev/null 2>&1 && echo BIN_OK || echo BIN_MISSING
+            `);
+          }
+          if (isAnytls) {
+            return execCommand(server, `
+              sudo mkdir -p /etc/sing-box /usr/local/bin
+              if [ ! -f /etc/sing-box/cert.crt ]; then
+                sudo openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/sing-box/cert.key -out /etc/sing-box/cert.crt -days 3650 -subj "/CN=${deploySni}" 2>/dev/null || true
+              fi
+              if ! command -v sing-box >/dev/null 2>&1; then
+                curl -fsSL https://sing-box.app/install.sh | sh -s -- 2>/dev/null || {
+                  SINGBOX_URL=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.assets[] | select(.name | contains("linux") and contains("amd64.tar.gz")) | .browser_download_url' 2>/dev/null | head -n 1)
+                  if [ -n "$SINGBOX_URL" ] && [ "$SINGBOX_URL" != "null" ]; then
+                    curl -sL "$SINGBOX_URL" -o /tmp/sing-box.tar.gz
+                    tar -xzf /tmp/sing-box.tar.gz -C /tmp/ 2>/dev/null || true
+                    sudo mv /tmp/sing-box-*/sing-box /usr/local/bin/sing-box 2>/dev/null || true
+                    sudo chmod +x /usr/local/bin/sing-box 2>/dev/null || true
+                    find /tmp -maxdepth 1 -name "sing-box*" -exec rm -r -f {} + 2>/dev/null || true
+                  fi
+                }
+              fi
+              if [ ! -f /etc/systemd/system/sing-box.service ]; then
+                echo "[Unit]
 Description=sing-box Service (AnyTLS Core)
 After=network.target network-online.target
 Wants=network-online.target
@@ -775,36 +750,32 @@ LimitNOFILE=65535
 
 [Install]
 WantedBy=multi-user.target" | sudo tee /etc/systemd/system/sing-box.service > /dev/null
-          fi
-          sudo systemctl daemon-reload
-          ` : ""}
-
-          ${selectedDeployProtocol.id === "amnezia-wg" ? `
-          # Install AmneziaWG 2.0 -- primary: official PPA (kernel module via DKMS + tools)
-          echo "[AWG] Installing via official ppa:amnezia/ppa ..."
-          sudo add-apt-repository -y ppa:amnezia/ppa 2>/dev/null || true
-          sudo apt-get update -y 2>/dev/null || true
-          if sudo apt-get install -y amneziawg amneziawg-tools amneziawg-dkms 2>/dev/null; then
-            echo "[AWG] Installed via official PPA (kernel module + tools + systemd unit)"
-          else
-            echo "[AWG] PPA install failed on this distro -- falling back to prebuilt awg/awg-quick binaries from amnezia-vpn/amneziawg-tools releases"
-            AWG_URL=$(curl -s https://api.github.com/repos/amnezia-vpn/amneziawg-tools/releases/latest | jq -r '.assets[] | select(.name | test("ubuntu")) | .browser_download_url' 2>/dev/null | head -n 1)
-            if [ -n "$AWG_URL" ] && [ "$AWG_URL" != "null" ]; then
-              curl -sL "$AWG_URL" -o /tmp/awgtools.zip
-              mkdir -p /tmp/awgtools && (cd /tmp/awgtools && unzip -o /tmp/awgtools.zip >/dev/null 2>&1)
-              AWG_BIN=$(find /tmp/awgtools -type f -name "awg" | head -n 1)
-              AWGQ_BIN=$(find /tmp/awgtools -type f -name "awg-quick" | head -n 1)
-              [ -n "$AWG_BIN" ] && sudo install -m 755 "$AWG_BIN" /usr/bin/awg
-              [ -n "$AWGQ_BIN" ] && sudo install -m 755 "$AWGQ_BIN" /usr/bin/awg-quick
-              find /tmp/awgtools -delete 2>/dev/null || true
-              find /tmp/awgtools.zip -delete 2>/dev/null || true
-              echo "[AWG] WARNING: fallback tools installed, but the kernel module (DKMS) was NOT installed since the PPA step failed -- awg-quick needs it (or an amneziawg-go userspace daemon, which currently has no official prebuilt release). The service may not come up on unsupported distros."
+              fi
+              sudo systemctl daemon-reload
+              command -v sing-box >/dev/null 2>&1 && echo BIN_OK || echo BIN_MISSING
+            `);
+          }
+          // AmneziaWG
+          return execCommand(server, `
+            sudo add-apt-repository -y ppa:amnezia/ppa 2>/dev/null || true
+            sudo apt-get update -y 2>/dev/null || true
+            if sudo apt-get install -y amneziawg amneziawg-tools amneziawg-dkms 2>/dev/null; then
+              echo "[AWG] Installed via official PPA"
             else
-              echo "[AWG] ERROR: could not fetch fallback binaries either -- no PPA package and no matching GitHub release asset."
-            fi
-            # The apt package normally ships this template unit -- write it ourselves for the fallback path
-            if [ ! -f /etc/systemd/system/awg-quick@.service ]; then
-              echo "[Unit]
+              echo "[AWG] PPA install failed -- falling back to prebuilt awg/awg-quick binaries"
+              AWG_URL=$(curl -s https://api.github.com/repos/amnezia-vpn/amneziawg-tools/releases/latest | jq -r '.assets[] | select(.name | test("ubuntu")) | .browser_download_url' 2>/dev/null | head -n 1)
+              if [ -n "$AWG_URL" ] && [ "$AWG_URL" != "null" ]; then
+                curl -sL "$AWG_URL" -o /tmp/awgtools.zip
+                mkdir -p /tmp/awgtools && (cd /tmp/awgtools && unzip -o /tmp/awgtools.zip >/dev/null 2>&1)
+                AWG_BIN_F=$(find /tmp/awgtools -type f -name "awg" | head -n 1)
+                AWGQ_BIN_F=$(find /tmp/awgtools -type f -name "awg-quick" | head -n 1)
+                [ -n "$AWG_BIN_F" ] && sudo install -m 755 "$AWG_BIN_F" /usr/bin/awg
+                [ -n "$AWGQ_BIN_F" ] && sudo install -m 755 "$AWGQ_BIN_F" /usr/bin/awg-quick
+                find /tmp/awgtools -delete 2>/dev/null || true
+                rm -f /tmp/awgtools.zip 2>/dev/null || true
+              fi
+              if [ ! -f /etc/systemd/system/awg-quick@.service ]; then
+                echo "[Unit]
 Description=AmneziaWG via awg-quick(8) for %I
 After=network-online.target nss-lookup.target
 Wants=network-online.target nss-lookup.target
@@ -821,141 +792,218 @@ Environment=WG_ENDPOINT_RESOLUTION_RETRIES=infinity
 
 [Install]
 WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > /dev/null
-              sudo systemctl daemon-reload 2>/dev/null || true
+                sudo systemctl daemon-reload 2>/dev/null || true
+              fi
             fi
-          fi
-          sudo mkdir -p /etc/amnezia/amneziawg /etc/wireguard
-
-          # Generate REAL X25519 keypairs for both ends -- AmneziaWG/WireGuard is mutual-auth,
-          # so the server needs its own key plus the client's PUBLIC key registered as a Peer,
-          # and the client config needs the SERVER's public key. Neither side can be faked.
-          AWG_BIN=$(command -v awg || command -v wg || echo "/usr/bin/awg")
-          AWG_SERVER_PRIV=$($AWG_BIN genkey 2>/dev/null)
-          AWG_SERVER_PUB=$(echo "$AWG_SERVER_PRIV" | $AWG_BIN pubkey 2>/dev/null)
-          AWG_CLIENT_PRIV=$($AWG_BIN genkey 2>/dev/null)
-          AWG_CLIENT_PUB=$(echo "$AWG_CLIENT_PRIV" | $AWG_BIN pubkey 2>/dev/null)
-
-          AWG_EGRESS_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
-          [ -z "$AWG_EGRESS_IFACE" ] && AWG_EGRESS_IFACE="eth0"
-
-          if [ -n "$AWG_SERVER_PRIV" ] && [ -n "$AWG_SERVER_PUB" ] && [ -n "$AWG_CLIENT_PUB" ]; then
-            AWG_CONF="[Interface]
-Address = 10.29.29.1/24
-ListenPort = ${deployPort}
-PrivateKey = $AWG_SERVER_PRIV
-Jc = ${awgJc}
-Jmin = ${awgJmin}
-Jmax = ${awgJmax}
-S1 = ${awgS1}
-S2 = ${awgS2}
-${awgVersion === "2.0" ? `S3 = ${awgS3}
-S4 = ${awgS4}` : ""}
-H1 = ${awgH1}
-H2 = ${awgH2}
-H3 = ${awgH3}
-H4 = ${awgH4}
-PostUp = iptables -A FORWARD -i awg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o $AWG_EGRESS_IFACE -j MASQUERADE
-PostDown = iptables -D FORWARD -i awg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o $AWG_EGRESS_IFACE -j MASQUERADE
-
-[Peer]
-PublicKey = $AWG_CLIENT_PUB
-AllowedIPs = 10.29.29.2/32"
-            # Written to both known search paths since packaging differs between the PPA
-            # build and the prebuilt-binary fallback path used above.
-            echo "$AWG_CONF" | sudo tee /etc/amnezia/amneziawg/awg0.conf > /dev/null
-            echo "$AWG_CONF" | sudo tee /etc/wireguard/awg0.conf > /dev/null
-            sudo chmod 600 /etc/amnezia/amneziawg/awg0.conf /etc/wireguard/awg0.conf 2>/dev/null || true
-            echo "AWG_SERVER_PUB:$AWG_SERVER_PUB"
-            echo "AWG_CLIENT_PRIV:$AWG_CLIENT_PRIV"
-          else
-            echo "[AWG] ERROR: key generation failed (awg/wg binary not found or not working) -- cannot write a valid config."
-          fi
-          ` : ""}
-
-          # Write protocol configuration (AmneziaWG writes its own config above -- it's
-          # real WireGuard-style INI generated only after server keys exist, not this
-          # generic JSON writer)
-          ${selectedDeployProtocol.id !== "amnezia-wg" ? `
-          sudo mkdir -p ${configPathPrefix}/${serviceDir}
-          echo '${configJson}' | sudo tee ${configPathPrefix}/${serviceDir}/${configFile} > /dev/null
-          if [ "${serviceDir}" = "xray" ]; then
-            echo '${configJson}' | sudo tee /etc/xray/config.json > /dev/null 2>&1 || true
-          fi
-          ` : ""}
-          
-          ${selectedDeployProtocol.id === "xray-vless-reality" ? `
-          # Generate valid REALITY keypair on the server
-          XRAY_BIN=$(which xray 2>/dev/null || echo "/usr/local/bin/xray")
-          $XRAY_BIN x25519 > /tmp/xray_keys 2>/dev/null || true
-          # Current Xray-core prints "PrivateKey: ..." / "Password (PublicKey): ..." (no space,
-          # different label than older releases which used "Private key:" / "Public key:").
-          # Match both formats robustly instead of relying on a fixed column/label.
-          SERVER_PRIV=$(grep -iE "Private ?Key\\)?:" /tmp/xray_keys 2>/dev/null | awk -F': ' '{print $2}' | tr -d ' \\r')
-          SERVER_PUB=$(grep -iE "Public ?Key\\)?:" /tmp/xray_keys 2>/dev/null | awk -F': ' '{print $2}' | tr -d ' \\r')
-          if [ -n "$SERVER_PRIV" ]; then
-            sudo sed -i "s/PRIVATE_KEY_PLACEHOLDER/$SERVER_PRIV/g" ${configPathPrefix}/${serviceDir}/${configFile}
-            sudo sed -i "s/PRIVATE_KEY_PLACEHOLDER/$SERVER_PRIV/g" /etc/xray/config.json 2>/dev/null || true
-            echo "XRAY_REALITY_PUB:$SERVER_PUB"
-          fi
-          ` : ""}
-
-          sudo systemctl daemon-reload 2>/dev/null || true
-          sudo systemctl enable ${serviceName} 2>/dev/null || true
-          sudo systemctl restart ${serviceName} 2>/dev/null || true
-
-          sleep 2
-          echo "SERVICE_STATUS:$(sudo systemctl is-active ${serviceName} 2>/dev/null || echo inactive)"
-        `;
-
-        let res;
-        try {
-          res = await execCommand(server, bashScript);
-        } catch (err: any) {
-          setIsDeploying(false);
-          setDeployLogs((prev) => [...prev, `[ERROR] Не удалось выполнить SSH-соединение: ${err?.message || "неизвестная ошибка"}`]);
-          toast.error(`Деплой не удался: ${err?.message || "ошибка SSH-соединения"}`);
-          return;
-        }
-
-        const statusMatch = res.stdout?.match(/SERVICE_STATUS:(\w+)/);
-        const serviceIsActive = !!statusMatch && statusMatch[1] === "active";
-
-        if (!serviceIsActive) {
-          setIsDeploying(false);
-          const tail = (res.stderr || res.stdout || "Нет вывода").slice(-1000);
-          setDeployLogs((prev) => [...prev, `[ERROR] Служба ${serviceName} не запустилась после установки.`, tail]);
-          toast.error(`Деплой не удался: служба ${serviceName} не активна. Проверьте вывод в логе установки.`);
-          return;
-        }
-
-        setDeployLogs((prev) => [...prev, `[SUCCESS] Служба ${serviceName} активна и запущена на сервере.`]);
-
-        if (res.stdout && res.stdout.includes("XRAY_REALITY_PUB:")) {
-          const match = res.stdout.match(/XRAY_REALITY_PUB:([a-zA-Z0-9_-]+)/);
-          if (match && match[1]) {
-            link = link.replace(/pbk=[^&#]+/, `pbk=${match[1]}`);
+            sudo mkdir -p /etc/amnezia/amneziawg /etc/wireguard
+            ( command -v awg || command -v wg ) >/dev/null 2>&1 && echo BIN_OK || echo BIN_MISSING
+          `);
+        },
+        verify: (res) => {
+          if (!res.stdout.includes("BIN_OK")) {
+            return `Не удалось установить бинарный файл ${isXrayFamily ? "xray" : isAnytls ? "sing-box" : "awg/wg"} -- проверь интернет-доступ сервера к GitHub/офиц. репозиториям.${res.stderr ? ` (${res.stderr.slice(-200)})` : ""}`;
           }
-        }
+          return null;
+        },
+      });
 
-        if (selectedDeployProtocol.id === "amnezia-wg") {
-          const pubMatch = res.stdout?.match(/AWG_SERVER_PUB:(\S+)/);
-          const privMatch = res.stdout?.match(/AWG_CLIENT_PRIV:(\S+)/);
-          if (pubMatch?.[1] && privMatch?.[1]) {
-            // Rebuild the client .conf from scratch with the real server-generated keys --
-            // the placeholder built earlier used non-matching demo keys that could never work.
-            link = buildAwgClientConf(privMatch[1], pubMatch[1]);
-          } else {
-            setIsDeploying(false);
-            setDeployLogs((prev) => [...prev, `[ERROR] Не удалось получить ключи AmneziaWG с сервера -- служба поднялась, но конфиг клиента невозможно собрать корректно.`]);
-            toast.error(`Деплой не удался: сервер не вернул сгенерированные ключи AmneziaWG.`);
-            return;
+      // --- Step 3 (only reality / awg): generate real keys on the server ---
+      if (isRealityProtocol) {
+        steps.push({
+          key: "keygen",
+          label: "Генерация REALITY-ключей на сервере",
+          run: () => execCommand(server, `
+            XRAY_BIN=$(command -v xray || echo /usr/local/bin/xray)
+            $XRAY_BIN x25519 > /tmp/xray_keys 2>/dev/null || true
+            SERVER_PRIV=$(grep -iE "Private ?Key\\)?:" /tmp/xray_keys 2>/dev/null | awk -F': ' '{print $2}' | tr -d ' \\r')
+            SERVER_PUB=$(grep -iE "Public ?Key\\)?:" /tmp/xray_keys 2>/dev/null | awk -F': ' '{print $2}' | tr -d ' \\r')
+            rm -f /tmp/xray_keys 2>/dev/null || true
+            if [ -n "$SERVER_PRIV" ] && [ -n "$SERVER_PUB" ]; then
+              echo "XRAY_REALITY_PRIV:$SERVER_PRIV"
+              echo "XRAY_REALITY_PUB:$SERVER_PUB"
+            else
+              echo "KEYGEN_FAILED"
+            fi
+          `),
+          verify: (res) => {
+            const privM = res.stdout.match(/XRAY_REALITY_PRIV:(\S+)/);
+            const pubM = res.stdout.match(/XRAY_REALITY_PUB:(\S+)/);
+            if (!privM || !pubM) return "Не удалось сгенерировать REALITY-ключи (xray x25519 не вернул ожидаемый вывод).";
+            realityServerPriv = privM[1];
+            realityServerPub = pubM[1];
+            return null;
+          },
+        });
+      } else if (isAwg) {
+        steps.push({
+          key: "keygen",
+          label: "Генерация X25519-ключей AmneziaWG на сервере",
+          run: () => execCommand(server, `
+            AWG_BIN=$(command -v awg || command -v wg || echo /usr/bin/awg)
+            AWG_SERVER_PRIV=$($AWG_BIN genkey 2>/dev/null)
+            AWG_SERVER_PUB=$(echo "$AWG_SERVER_PRIV" | $AWG_BIN pubkey 2>/dev/null)
+            AWG_CLIENT_PRIV=$($AWG_BIN genkey 2>/dev/null)
+            AWG_CLIENT_PUB=$(echo "$AWG_CLIENT_PRIV" | $AWG_BIN pubkey 2>/dev/null)
+            AWG_EGRESS_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+            [ -z "$AWG_EGRESS_IFACE" ] && AWG_EGRESS_IFACE="eth0"
+            if [ -n "$AWG_SERVER_PRIV" ] && [ -n "$AWG_SERVER_PUB" ] && [ -n "$AWG_CLIENT_PRIV" ] && [ -n "$AWG_CLIENT_PUB" ]; then
+              echo "AWG_SERVER_PRIV:$AWG_SERVER_PRIV"
+              echo "AWG_SERVER_PUB:$AWG_SERVER_PUB"
+              echo "AWG_CLIENT_PRIV:$AWG_CLIENT_PRIV"
+              echo "AWG_CLIENT_PUB:$AWG_CLIENT_PUB"
+              echo "AWG_IFACE:$AWG_EGRESS_IFACE"
+            else
+              echo "KEYGEN_FAILED"
+            fi
+          `),
+          verify: (res) => {
+            const sp = res.stdout.match(/AWG_SERVER_PRIV:(\S+)/);
+            const spub = res.stdout.match(/AWG_SERVER_PUB:(\S+)/);
+            const cp = res.stdout.match(/AWG_CLIENT_PRIV:(\S+)/);
+            const cpub = res.stdout.match(/AWG_CLIENT_PUB:(\S+)/);
+            const iface = res.stdout.match(/AWG_IFACE:(\S+)/);
+            if (!sp || !spub || !cp || !cpub) return "Не удалось сгенерировать ключи AmneziaWG (awg/wg genkey не сработал -- бинарник не найден или сломан).";
+            awgServerPriv = sp[1];
+            awgServerPub = spub[1];
+            awgClientPriv = cp[1];
+            awgClientPub = cpub[1];
+            if (iface) awgEgressIface = iface[1];
+            return null;
+          },
+        });
+      }
+
+      // --- Step 4: backup + write config ---
+      steps.push({
+        key: "write_config",
+        label: "Резервное копирование и запись конфигурации",
+        run: () => {
+          const content = buildDeployConfigContent();
+          const escaped = content.replace(/'/g, `'\\''`);
+          return execCommand(server, `
+            CONF_PATH="${confPath}"
+            sudo mkdir -p "$(dirname "$CONF_PATH")"
+            if [ -f "$CONF_PATH" ]; then sudo cp "$CONF_PATH" "$CONF_PATH.rollback.bak"; echo BACKED_UP; else echo NO_PRIOR; fi
+            echo '${escaped}' | sudo tee "$CONF_PATH" > /dev/null
+            ${secondaryPath ? `
+            SEC_PATH="${secondaryPath}"
+            sudo mkdir -p "$(dirname "$SEC_PATH")"
+            [ -f "$SEC_PATH" ] && sudo cp "$SEC_PATH" "$SEC_PATH.rollback.bak" 2>/dev/null
+            echo '${escaped}' | sudo tee "$SEC_PATH" > /dev/null 2>&1 || true
+            ` : ""}
+            ${isAwg ? `sudo chmod 600 "$CONF_PATH" ${secondaryPath ? `"${secondaryPath}"` : ""} 2>/dev/null || true` : ""}
+            test -s "$CONF_PATH" && echo WRITE_OK || echo WRITE_FAIL
+          `);
+        },
+        verify: (res) => {
+          if (!res.stdout.includes("WRITE_OK")) return `Не удалось записать файл конфигурации на сервере (проверь права sudo и свободное место на диске).${res.stderr ? ` (${res.stderr.slice(-200)})` : ""}`;
+          return null;
+        },
+        rollback: async () => {
+          await execCommand(server, `
+            CONF_PATH="${confPath}"
+            if [ -f "$CONF_PATH.rollback.bak" ]; then sudo mv "$CONF_PATH.rollback.bak" "$CONF_PATH"; else sudo rm -f "$CONF_PATH"; fi
+            ${secondaryPath ? `
+            SEC_PATH="${secondaryPath}"
+            if [ -f "$SEC_PATH.rollback.bak" ]; then sudo mv "$SEC_PATH.rollback.bak" "$SEC_PATH"; else sudo rm -f "$SEC_PATH" 2>/dev/null || true; fi
+            ` : ""}
+          `);
+          if (serviceRestartAttempted) {
+            // The service was already restarted with the config we just reverted away from --
+            // bring it back up with the restored previous config instead of leaving it broken.
+            await execCommand(server, `sudo systemctl restart ${serviceName} 2>/dev/null || true`);
           }
-        }
+        },
+      });
+
+      // --- Step 5: validate config BEFORE ever touching the running service ---
+      steps.push({
+        key: "validate_config",
+        label: "Валидация конфигурации перед запуском службы",
+        run: () => {
+          if (isXrayFamily) {
+            return execCommand(server, `XRAY_BIN=$(command -v xray || echo /usr/local/bin/xray); $XRAY_BIN run -test -config "${confPath}" 2>&1; echo "VALIDATE_CODE:$?"`);
+          }
+          if (isAnytls) {
+            return execCommand(server, `SB_BIN=$(command -v sing-box || echo /usr/local/bin/sing-box); $SB_BIN check -c "${confPath}" 2>&1; echo "VALIDATE_CODE:$?"`);
+          }
+          return execCommand(server, `grep -q "PrivateKey" "${confPath}" && grep -q "ListenPort" "${confPath}" && grep -q "\\[Peer\\]" "${confPath}" && echo "VALIDATE_CODE:0" || echo "VALIDATE_CODE:1"`);
+        },
+        verify: (res) => {
+          const match = res.stdout.match(/VALIDATE_CODE:(\d+)/);
+          if (!match || match[1] !== "0") {
+            const tail = res.stdout.slice(-500);
+            return `Конфигурация не прошла проверку синтаксиса -- служба НЕ была тронута. Вывод: ${tail}`;
+          }
+          return null;
+        },
+      });
+
+      // --- Step 6: start + verify real systemd state ---
+      steps.push({
+        key: "start_service",
+        label: "Запуск и проверка службы systemd",
+        run: () => {
+          serviceRestartAttempted = true;
+          return execCommand(server, `
+            sudo systemctl daemon-reload 2>/dev/null || true
+            sudo systemctl enable ${serviceName} 2>/dev/null || true
+            sudo systemctl restart ${serviceName} 2>/dev/null || true
+            sleep 2
+            for i in 1 2 3; do
+              STATE=$(systemctl show ${serviceName} --property=ActiveState --value 2>/dev/null)
+              [ "$STATE" = "active" ] && break
+              sleep 2
+            done
+            echo "ACTIVE_STATE:$(systemctl show ${serviceName} --property=ActiveState --value 2>/dev/null)"
+            echo "SUB_STATE:$(systemctl show ${serviceName} --property=SubState --value 2>/dev/null)"
+          `);
+        },
+        verify: (res) => {
+          const active = res.stdout.match(/ACTIVE_STATE:(\w+)/)?.[1];
+          const sub = res.stdout.match(/SUB_STATE:(\w+)/)?.[1];
+          if (active !== "active") {
+            return `Служба ${serviceName} не поднялась (${active || "unknown"}/${sub || "unknown"}) -- см. journalctl -u ${serviceName}`;
+          }
+          return null;
+        },
+        rollback: async () => {
+          await execCommand(server, `sudo systemctl stop ${serviceName} 2>/dev/null || true`);
+        },
+      });
+
+      let outcome;
+      try {
+        outcome = await runDeployPipeline(steps, (line) => setDeployLogs((prev) => [...prev, line]));
       } catch (err: any) {
         setIsDeploying(false);
         setDeployLogs((prev) => [...prev, `[ERROR] Ошибка при подготовке деплоя: ${err?.message || "неизвестная ошибка"}`]);
         toast.error(`Деплой не удался: ${err?.message || "неизвестная ошибка"}`);
         return;
+      }
+
+      if (!outcome.success) {
+        setIsDeploying(false);
+        setDeployLogs((prev) => [...prev, `[FAILED] Деплой прерван на шаге "${outcome.failedStep}". Изменения на сервере откачены.`]);
+        toast.error(`Деплой не удался на шаге "${outcome.failedStep}"`, (outcome.failureReason || "См. лог ниже").slice(0, 300));
+        return;
+      }
+
+      setDeployLogs((prev) => [...prev, `[SUCCESS] Служба ${serviceName} активна и запущена на сервере.`]);
+
+      if (isRealityProtocol && realityServerPub) {
+        link = link.replace(/pbk=[^&#]+/, `pbk=${realityServerPub}`);
+      }
+
+      if (isAwg) {
+        if (awgClientPriv && awgServerPub) {
+          link = buildAwgClientConf(awgClientPriv, awgServerPub);
+        } else {
+          setIsDeploying(false);
+          setDeployLogs((prev) => [...prev, `[ERROR] Не удалось получить ключи AmneziaWG с сервера -- служба поднялась, но конфиг клиента невозможно собрать корректно.`]);
+          toast.error(`Деплой не удался: сервер не вернул сгенерированные ключи AmneziaWG.`);
+          return;
+        }
       }
     }
 
