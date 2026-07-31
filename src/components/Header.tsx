@@ -73,8 +73,12 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="bg-[#0b0f17]/90 backdrop-blur-xl border-b border-white/10 text-slate-200 sticky top-0 z-30 shadow-2xl">
       <div className="max-w-7xl mx-auto px-3.5 sm:px-6 py-3 flex items-center justify-between gap-3">
-        {/* Brand & App Title */}
-        <div className="flex items-center gap-3 min-w-0">
+        {/* Brand & App Title -- hidden on mobile: on narrow phone widths the title text
+            truncates away to nothing while the icon (shrink-0) stays fixed-size, so it ends
+            up crammed directly against the server-switcher pill with no breathing room.
+            Full-width mobile screens need that space for the functional controls instead;
+            the branding only shows from sm: up where there's room for it to read properly. */}
+        <div className="hidden sm:flex items-center gap-3 min-w-0">
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-violet-500/20 via-slate-800 to-fuchsia-500/20 border border-violet-500/30 flex items-center justify-center shadow-lg shadow-violet-950/30 text-violet-400 shrink-0">
             <Server className="w-5 h-5" />
           </div>
@@ -94,8 +98,12 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Server Switcher Pill & Controls */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Server Switcher Pill & Controls -- ml-auto keeps this pinned to the right edge
+            even on mobile where the brand block above is hidden (display:none), leaving it
+            as the row's only flex child. Plain `justify-between` on the parent only pushes
+            a *second* item to the end; with a single child it collapses back to flex-start,
+            which would otherwise yank these controls over to the left edge on phones. */}
+        <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0">
           {/* Active Server Selector */}
           <div className="relative">
             <button
