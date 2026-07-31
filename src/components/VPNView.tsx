@@ -746,15 +746,50 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/sing-box.service > /d
           ` : ""}
 
           ${selectedDeployProtocol.id === "amnezia-wg" ? `
-          # Install AmneziaWG 2.0 Engine (amnezia-vpn/amneziawg-tools & amneziawg-go)
+          # Install AmneziaWG 2.0 -- primary: official PPA (kernel module via DKMS + tools)
+          echo "[AWG] Installing via official ppa:amnezia/ppa ..."
           sudo add-apt-repository -y ppa:amnezia/ppa 2>/dev/null || true
-          sudo apt-get update -y && sudo apt-get install -y amneziawg amneziawg-tools amneziawg-dkms 2>/dev/null || {
-            echo "[AWG] Downloading standalone amneziawg-go..."
-            AWG_URL=$(curl -s https://api.github.com/repos/amnezia-vpn/amneziawg-go/releases/latest | jq -r '.assets[] | select(.name | contains("linux") and contains("amd64")) | .browser_download_url' 2>/dev/null | head -n 1)
+          sudo apt-get update -y 2>/dev/null || true
+          if sudo apt-get install -y amneziawg amneziawg-tools amneziawg-dkms 2>/dev/null; then
+            echo "[AWG] Installed via official PPA (kernel module + tools + systemd unit)"
+          else
+            echo "[AWG] PPA install failed on this distro -- falling back to prebuilt awg/awg-quick binaries from amnezia-vpn/amneziawg-tools releases"
+            AWG_URL=$(curl -s https://api.github.com/repos/amnezia-vpn/amneziawg-tools/releases/latest | jq -r '.assets[] | select(.name | test("ubuntu")) | .browser_download_url' 2>/dev/null | head -n 1)
             if [ -n "$AWG_URL" ] && [ "$AWG_URL" != "null" ]; then
-              wget -qO /usr/local/bin/amneziawg-go "$AWG_URL" 2>/dev/null && chmod +x /usr/local/bin/amneziawg-go || true
+              curl -sL "$AWG_URL" -o /tmp/awgtools.zip
+              mkdir -p /tmp/awgtools && (cd /tmp/awgtools && unzip -o /tmp/awgtools.zip >/dev/null 2>&1)
+              AWG_BIN=$(find /tmp/awgtools -type f -name "awg" | head -n 1)
+              AWGQ_BIN=$(find /tmp/awgtools -type f -name "awg-quick" | head -n 1)
+              [ -n "$AWG_BIN" ] && sudo install -m 755 "$AWG_BIN" /usr/bin/awg
+              [ -n "$AWGQ_BIN" ] && sudo install -m 755 "$AWGQ_BIN" /usr/bin/awg-quick
+              find /tmp/awgtools -delete 2>/dev/null || true
+              find /tmp/awgtools.zip -delete 2>/dev/null || true
+              echo "[AWG] WARNING: fallback tools installed, but the kernel module (DKMS) was NOT installed since the PPA step failed -- awg-quick needs it (or an amneziawg-go userspace daemon, which currently has no official prebuilt release). The service may not come up on unsupported distros."
+            else
+              echo "[AWG] ERROR: could not fetch fallback binaries either -- no PPA package and no matching GitHub release asset."
             fi
-          }
+            # The apt package normally ships this template unit -- write it ourselves for the fallback path
+            if [ ! -f /etc/systemd/system/awg-quick@.service ]; then
+              echo "[Unit]
+Description=AmneziaWG via awg-quick(8) for %I
+After=network-online.target nss-lookup.target
+Wants=network-online.target nss-lookup.target
+Documentation=man:awg-quick(8)
+Documentation=man:awg(8)
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/awg-quick up %i
+ExecStop=/usr/bin/awg-quick down %i
+ExecReload=/bin/bash -c 'exec /usr/bin/awg syncconf %i <(/usr/bin/awg-quick strip %i)'
+Environment=WG_ENDPOINT_RESOLUTION_RETRIES=infinity
+
+[Install]
+WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > /dev/null
+              sudo systemctl daemon-reload 2>/dev/null || true
+            fi
+          fi
           sudo mkdir -p /etc/amnezia/amneziawg /etc/wireguard
           ` : ""}
 
@@ -769,8 +804,11 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/sing-box.service > /d
           # Generate valid REALITY keypair on the server
           XRAY_BIN=$(which xray 2>/dev/null || echo "/usr/local/bin/xray")
           $XRAY_BIN x25519 > /tmp/xray_keys 2>/dev/null || true
-          SERVER_PRIV=$(grep -i "Private key:" /tmp/xray_keys 2>/dev/null | awk '{print $3}')
-          SERVER_PUB=$(grep -i "Public key:" /tmp/xray_keys 2>/dev/null | awk '{print $3}')
+          # Current Xray-core prints "PrivateKey: ..." / "Password (PublicKey): ..." (no space,
+          # different label than older releases which used "Private key:" / "Public key:").
+          # Match both formats robustly instead of relying on a fixed column/label.
+          SERVER_PRIV=$(grep -iE "Private ?Key\\)?:" /tmp/xray_keys 2>/dev/null | awk -F': ' '{print $2}' | tr -d ' \\r')
+          SERVER_PUB=$(grep -iE "Public ?Key\\)?:" /tmp/xray_keys 2>/dev/null | awk -F': ' '{print $2}' | tr -d ' \\r')
           if [ -n "$SERVER_PRIV" ]; then
             sudo sed -i "s/PRIVATE_KEY_PLACEHOLDER/$SERVER_PRIV/g" ${configPathPrefix}/${serviceDir}/${configFile}
             sudo sed -i "s/PRIVATE_KEY_PLACEHOLDER/$SERVER_PRIV/g" /etc/xray/config.json 2>/dev/null || true
