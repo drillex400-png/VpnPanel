@@ -36,7 +36,7 @@ const ToolsView = lazy(() => import("./components/ToolsView").then((m) => ({ def
 // being fetched -- avoids a jarring blank flash between tab click and content appearing.
 const ViewLoadingFallback = () => (
   <div className="flex items-center justify-center py-24 text-slate-500">
-    <Loader2 className="w-6 h-6 animate-spin text-emerald-400/70" />
+    <Loader2 className="w-6 h-6 animate-spin text-violet-400/70" />
   </div>
 );
 
@@ -147,7 +147,7 @@ function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#07090e] bg-radial-glow text-slate-100 flex flex-col selection:bg-emerald-500 selection:text-black relative">
+    <div className="min-h-screen bg-[#0a0712] bg-radial-glow text-slate-100 flex flex-col selection:bg-violet-500 selection:text-black relative">
       <ToastContainer />
 
       {/* Top App Header */}
@@ -235,7 +235,7 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#07090e] flex items-center justify-center text-slate-400">
+      <div className="min-h-screen bg-[#0a0712] flex items-center justify-center text-slate-400">
         <Loader2 className="w-6 h-6 animate-spin" />
       </div>
     );
@@ -243,13 +243,13 @@ export default function App() {
 
   if (bootError) {
     return (
-      <div className="min-h-screen bg-[#07090e] flex items-center justify-center px-6">
+      <div className="min-h-screen bg-[#0a0712] flex items-center justify-center px-6">
         <div className="max-w-sm w-full text-center space-y-4">
           <p className="text-slate-200 font-medium">Не удалось подключиться к серверу</p>
           <p className="text-slate-500 text-sm">{bootError}</p>
           <button
             onClick={() => retryBootstrap()}
-            className="px-4 py-2 rounded-lg bg-emerald-500 text-black font-medium hover:bg-emerald-400 transition-colors"
+            className="px-4 py-2 rounded-lg bg-violet-500 text-black font-medium hover:bg-violet-400 transition-colors"
           >
             Повторить
           </button>

@@ -100,9 +100,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       )}
 
       {/* Top Banner: Server Identity */}
-      <div className="bg-gradient-to-r from-slate-900/90 via-[#0d131f] to-slate-900/90 border border-white/10 rounded-3xl p-5 shadow-2xl backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-slate-900/90 via-[#1a1228] to-slate-900/90 border border-white/10 rounded-3xl p-5 shadow-2xl backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 via-slate-800 to-cyan-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-950/40">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500/20 via-slate-800 to-fuchsia-500/20 border border-violet-500/30 flex items-center justify-center text-violet-400 shrink-0 shadow-lg shadow-violet-950/40">
             <Server className="w-6 h-6" />
           </div>
           <div>
@@ -110,7 +110,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <h2 className="text-xl font-extrabold text-white tracking-tight">
                 {metrics.os.hostname}
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-inner">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/15 text-violet-400 border border-violet-500/30 shadow-inner">
                 ОНЛАЙН
               </span>
             </div>
@@ -119,11 +119,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </p>
             <div className="flex flex-wrap items-center gap-4 mt-2.5 text-xs text-slate-300">
               <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                <Clock className="w-3.5 h-3.5 text-violet-400" />
                 Время работы: <strong className="text-white font-mono">{metrics.os.uptime}</strong>
               </span>
               <span className="flex items-center gap-1.5">
-                <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                <Cpu className="w-3.5 h-3.5 text-fuchsia-400" />
                 {metrics.cpu.cores} Ядер ({metrics.cpu.model.split(" ")[0]})
               </span>
             </div>
@@ -133,7 +133,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex items-center gap-2 border-t sm:border-t-0 border-white/10 pt-3 sm:pt-0">
           <button
             onClick={() => onNavigateTab("terminal")}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-emerald-950/40 transition active:scale-95"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-violet-950/40 transition active:scale-95"
           >
             <Terminal className="w-4 h-4" />
             SSH Консоль
@@ -155,7 +155,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
             Загрузка CPU
           </p>
-          <p className="text-2xl font-bold font-mono text-emerald-400 drop-shadow-sm">
+          <p className="text-2xl font-bold font-mono text-violet-400 drop-shadow-sm">
             <AnimatedNumber value={metrics.cpu.usagePct} suffix="%" />
           </p>
           <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
@@ -165,7 +165,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   ? "bg-rose-500"
                   : metrics.cpu.usagePct > 50
                   ? "bg-amber-400"
-                  : "bg-gradient-to-r from-emerald-500 to-teal-400"
+                  : "bg-gradient-to-r from-violet-500 to-fuchsia-400"
               }`}
               animate={{ width: `${metrics.cpu.usagePct}%` }}
               transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
@@ -182,13 +182,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
             Память ОЗУ
           </p>
-          <p className="text-2xl font-bold font-mono text-cyan-400 drop-shadow-sm">
+          <p className="text-2xl font-bold font-mono text-fuchsia-400 drop-shadow-sm">
             <AnimatedNumber value={parseFloat(ramUsedGb)} decimals={1} /><span className="text-xs text-slate-400">/{ramTotalGb}GB</span>
           </p>
           <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
             <motion.div
               className={`h-full rounded-full ${
-                ramPct > 85 ? "bg-rose-500" : "bg-gradient-to-r from-cyan-500 to-blue-500"
+                ramPct > 85 ? "bg-rose-500" : "bg-gradient-to-r from-fuchsia-500 to-blue-500"
               }`}
               animate={{ width: `${ramPct}%` }}
               transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
@@ -252,7 +252,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-emerald-400" />
+                <Activity className="w-4 h-4 text-violet-400" />
                 Монитор Ресурсов в Реальном Времени
               </h2>
               <p className="text-[11px] text-slate-400 mt-0.5">
@@ -260,11 +260,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </p>
             </div>
             <div className="flex items-center gap-3 text-xs">
-              <span className="flex items-center gap-1.5 text-emerald-400 font-mono text-[11px] font-bold">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" /> CPU
+              <span className="flex items-center gap-1.5 text-violet-400 font-mono text-[11px] font-bold">
+                <span className="w-2 h-2 rounded-full bg-violet-400 shadow-sm shadow-violet-400" /> CPU
               </span>
-              <span className="flex items-center gap-1.5 text-cyan-400 font-mono text-[11px] font-bold">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400" /> RAM
+              <span className="flex items-center gap-1.5 text-fuchsia-400 font-mono text-[11px] font-bold">
+                <span className="w-2 h-2 rounded-full bg-fuchsia-400 shadow-sm shadow-fuchsia-400" /> RAM
               </span>
             </div>
           </div>
@@ -293,7 +293,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 transition group text-xs text-slate-200 active:scale-98"
               >
                 <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                  <span className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
                     <HardDrive className="w-3.5 h-3.5" />
                   </span>
                   Файловый менеджер (/var/www, /etc)
@@ -306,7 +306,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 transition group text-xs text-slate-200 active:scale-98"
               >
                 <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                  <span className="p-2 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-400">
                     <Cpu className="w-3.5 h-3.5" />
                   </span>
                   Диспетчер процессов (htop)
@@ -344,7 +344,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="pt-3 border-t border-[#242424] flex items-center justify-between text-[11px] text-gray-500 font-mono">
             <span>SSH: Ed25519</span>
-            <span className="text-emerald-400 font-medium font-sans">Защищенная сессия</span>
+            <span className="text-violet-400 font-medium font-sans">Защищенная сессия</span>
           </div>
         </div>
       </div>
@@ -352,7 +352,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Disks & File Systems Table */}
       <div className="bg-[#171717] border border-[#242424] rounded-3xl p-5 shadow-xl space-y-3">
         <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 flex items-center gap-2">
-          <HardDrive className="w-4 h-4 text-emerald-400" />
+          <HardDrive className="w-4 h-4 text-violet-400" />
           Подключенные Дисковые Тома ({metrics.disk.length})
         </h2>
 
@@ -370,7 +370,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <tbody className="divide-y divide-[#242424] font-mono text-[11px]">
               {metrics.disk.map((d, i) => (
                 <tr key={i} className="hover:bg-[#202020] transition">
-                  <td className="py-3 px-3 font-semibold text-emerald-400">
+                  <td className="py-3 px-3 font-semibold text-violet-400">
                     {d.mount}
                   </td>
                   <td className="py-3 px-3 text-gray-500">{d.filesystem}</td>
@@ -382,7 +382,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <div className="w-full bg-[#242424] h-1.5 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full ${
-                            d.usePct > 80 ? "bg-rose-500" : "bg-emerald-500"
+                            d.usePct > 80 ? "bg-rose-500" : "bg-violet-500"
                           }`}
                           style={{ width: `${d.usePct}%` }}
                         />
@@ -392,7 +392,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </span>
                     </div>
                   </td>
-                  <td className="py-3 px-3 text-right text-emerald-400 font-semibold">
+                  <td className="py-3 px-3 text-right text-violet-400 font-semibold">
                     {d.availGb} GB
                   </td>
                 </tr>

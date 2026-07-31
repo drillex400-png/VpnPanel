@@ -203,7 +203,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <Folder className="w-5 h-5 text-emerald-400" />
+              <Folder className="w-5 h-5 text-violet-400" />
               Визуальный Файловый Менеджер
             </h2>
             <p className="text-xs text-gray-400">
@@ -215,7 +215,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
             <button
               onClick={() => fetchDirectoryFiles(currentPath)}
               disabled={isLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-[#171717] hover:bg-[#202020] text-emerald-400 rounded-xl text-xs font-semibold border border-[#2d2d2d] transition disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-[#171717] hover:bg-[#202020] text-violet-400 rounded-xl text-xs font-semibold border border-[#2d2d2d] transition disabled:opacity-50"
               title="Обновить содержимое директории"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
@@ -228,7 +228,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-[#171717] hover:bg-[#202020] text-gray-300 rounded-xl text-xs font-semibold border border-[#2d2d2d] transition"
             >
-              <FilePlus className="w-4 h-4 text-emerald-400" />
+              <FilePlus className="w-4 h-4 text-violet-400" />
               Новый Файл
             </button>
             <button
@@ -252,13 +252,13 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
               parts.pop();
               setCurrentPath("/" + parts.join("/"));
             }}
-            className="p-1 hover:text-emerald-400 text-gray-400 transition"
+            className="p-1 hover:text-violet-400 text-gray-400 transition"
             title="На уровень выше"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <span className="text-gray-500">Путь:</span>
-          <span className="text-emerald-300 font-semibold truncate">{currentPath}</span>
+          <span className="text-violet-300 font-semibold truncate">{currentPath}</span>
         </div>
 
         {/* Search Bar */}
@@ -269,7 +269,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
             placeholder="Поиск файлов или каталогов..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#171717] border border-[#242424] rounded-2xl pl-9 pr-4 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition"
+            className="w-full bg-[#171717] border border-[#242424] rounded-2xl pl-9 pr-4 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-violet-500 transition"
           />
         </div>
       </div>
@@ -302,10 +302,10 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                         e.stopPropagation();
                         handleOpenFile(file);
                       }}
-                      className="flex items-center gap-2.5 text-gray-200 hover:text-emerald-400 text-left font-sans text-xs font-semibold"
+                      className="flex items-center gap-2.5 text-gray-200 hover:text-violet-400 text-left font-sans text-xs font-semibold"
                     >
                       {file.isDir ? (
-                        <Folder className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <Folder className="w-4 h-4 text-violet-400 shrink-0" />
                       ) : file.extension === "conf" || file.extension === "yml" ? (
                         <FileCode className="w-4 h-4 text-amber-400 shrink-0" />
                       ) : (
@@ -321,7 +321,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                         e.stopPropagation();
                         setPermissionFile(file);
                       }}
-                      className="hover:text-emerald-300 transition flex items-center gap-1 text-[10px] bg-[#171717] px-2 py-0.5 rounded-full border border-[#242424]"
+                      className="hover:text-violet-300 transition flex items-center gap-1 text-[10px] bg-[#171717] px-2 py-0.5 rounded-full border border-[#242424]"
                       title="Click to edit permissions (chmod)"
                     >
                       <Lock className="w-2.5 h-2.5 text-gray-500" />
@@ -339,7 +339,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                             e.stopPropagation();
                             handleOpenFile(file);
                           }}
-                          className="p-1.5 hover:bg-[#242424] rounded-lg text-emerald-400 transition"
+                          className="p-1.5 hover:bg-[#242424] rounded-lg text-violet-400 transition"
                           title="Edit File"
                         >
                           <Edit className="w-3.5 h-3.5" />
@@ -371,7 +371,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
             {/* Modal Header */}
             <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <FileCode className="w-5 h-5 text-cyan-400" />
+                <FileCode className="w-5 h-5 text-fuchsia-400" />
                 <div>
                   <h3 className="font-bold text-sm text-white">{editingFile.name}</h3>
                   <p className="text-[10px] text-slate-400 font-mono">{editingFile.path}</p>
@@ -382,7 +382,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                 <button
                   onClick={handleSaveFile}
                   disabled={isSaving}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs rounded-xl shadow transition"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-semibold text-xs rounded-xl shadow transition"
                 >
                   <Check className="w-3.5 h-3.5" />
                   {isSaving ? "Сохранение..." : "Сохранить по SSH"}
@@ -399,7 +399,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
             {/* Code Editor Body */}
             <div className="flex-1 bg-slate-950 p-4 font-mono text-xs text-slate-200 overflow-y-auto relative">
               {isLoadingContent ? (
-                <div className="flex items-center justify-center h-full text-emerald-400 gap-2">
+                <div className="flex items-center justify-center h-full text-violet-400 gap-2">
                   <RefreshCw className="w-5 h-5 animate-spin" />
                   <span>Загрузка содержимого файла по SSH...</span>
                 </div>
@@ -407,7 +407,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                 <textarea
                   value={fileContent}
                   onChange={(e) => setFileContent(e.target.value)}
-                  className="w-full h-full bg-transparent text-emerald-400 font-mono focus:outline-none resize-none leading-relaxed"
+                  className="w-full h-full bg-transparent text-violet-400 font-mono focus:outline-none resize-none leading-relaxed"
                   spellCheck={false}
                 />
               )}
@@ -422,7 +422,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[100] flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
             <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-4 sm:p-5 space-y-4 shadow-2xl my-auto max-h-[85vh] overflow-y-auto scrollbar-thin">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Lock className="w-4 h-4 text-cyan-400" />
+                <Lock className="w-4 h-4 text-fuchsia-400" />
                 Права Chmod: {permissionFile.name}
               </h3>
 
@@ -432,7 +432,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                   type="text"
                   value={newMode}
                   onChange={(e) => setNewMode(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-fuchsia-500"
                 />
               </div>
 
@@ -445,7 +445,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                 </button>
                 <button
                   onClick={handleApplyPermissions}
-                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold transition"
+                  className="px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl text-xs font-semibold transition"
                 >
                   Применить Chmod
                 </button>
@@ -461,7 +461,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[100] flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
             <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-4 sm:p-5 space-y-4 shadow-2xl my-auto max-h-[85vh] overflow-y-auto scrollbar-thin">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                {isFolder ? <FolderPlus className="w-4 h-4 text-emerald-400" /> : <FilePlus className="w-4 h-4 text-cyan-400" />}
+                {isFolder ? <FolderPlus className="w-4 h-4 text-violet-400" /> : <FilePlus className="w-4 h-4 text-fuchsia-400" />}
                 {isFolder ? "Создать папку" : "Создать файл"}
               </h3>
 
@@ -472,7 +472,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                   placeholder={isFolder ? "my-new-folder" : "config.json"}
                   value={newFileName}
                   onChange={(e) => setNewFileName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-fuchsia-500"
                 />
               </div>
 
@@ -485,7 +485,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                 </button>
                 <button
                   onClick={handleCreateFileOrFolder}
-                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold transition"
+                  className="px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl text-xs font-semibold transition"
                 >
                   Создать
                 </button>

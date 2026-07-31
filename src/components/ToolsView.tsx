@@ -162,7 +162,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <Wrench className="w-5 h-5 text-cyan-400" />
+            <Wrench className="w-5 h-5 text-fuchsia-400" />
             Администрирование и Системные Утилиты
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -172,7 +172,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
         <button
           onClick={fetchToolsData}
           disabled={isLoading}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 rounded-xl font-semibold text-xs transition disabled:opacity-50 shrink-0"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-fuchsia-400 border border-slate-700 rounded-xl font-semibold text-xs transition disabled:opacity-50 shrink-0"
           title="Обновить данные утилит"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
@@ -184,7 +184,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-md space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-emerald-400" />
+            <Clock className="w-5 h-5 text-violet-400" />
             <div>
               <h3 className="text-sm font-bold text-white">
                 Запланированные Задачи Crontab ({cronJobs.length})
@@ -197,7 +197,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
 
           <button
             onClick={() => setShowAddCronModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold transition shrink-0"
           >
             <Plus className="w-4 h-4" />
             Добавить Cron
@@ -218,7 +218,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
             <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
               {cronJobs.map((job) => (
                 <tr key={job.id} className="hover:bg-slate-800/40 transition">
-                  <td className="py-3 px-3 font-semibold text-emerald-400">
+                  <td className="py-3 px-3 font-semibold text-violet-400">
                     {job.schedule}
                   </td>
                   <td className="py-3 px-3 text-slate-200 truncate max-w-xs font-sans">
@@ -230,7 +230,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
                       onClick={() => handleToggleCron(job)}
                       className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         job.enabled
-                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800/60"
+                          ? "bg-violet-950 text-violet-400 border border-violet-800/60"
                           : "bg-slate-800 text-slate-400"
                       }`}
                     >
@@ -306,7 +306,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
             }
             className="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-left space-y-1 transition"
           >
-            <div className="font-semibold text-cyan-400 flex items-center gap-1.5">
+            <div className="font-semibold text-fuchsia-400 flex items-center gap-1.5">
               <HardDrive className="w-4 h-4" /> Очистить Кэш APT
             </div>
             <div className="text-[11px] text-slate-400">
@@ -323,7 +323,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
             }
             className="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-left space-y-1 transition"
           >
-            <div className="font-semibold text-emerald-400 flex items-center gap-1.5">
+            <div className="font-semibold text-violet-400 flex items-center gap-1.5">
               <RefreshCw className="w-4 h-4" /> Очистить Систему Docker
             </div>
             <div className="text-[11px] text-slate-400">
@@ -340,7 +340,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
             <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-4 sm:p-5 space-y-4 shadow-2xl my-auto max-h-[85vh] overflow-y-auto scrollbar-thin">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <Clock className="w-4 h-4 text-violet-400 shrink-0" />
                   <span>Добавить задачу Crontab</span>
                 </h3>
                 <button
@@ -359,7 +359,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
                     placeholder="0 3 * * *"
                     value={cronSchedule}
                     onChange={(e) => setCronSchedule(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
                   />
                 </div>
 
@@ -370,7 +370,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
                     placeholder="/usr/local/bin/backup-db.sh"
                     value={cronCmd}
                     onChange={(e) => setCronCmd(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
                   />
                 </div>
               </div>
@@ -384,7 +384,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
                 </button>
                 <button
                   onClick={handleAddCron}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition"
+                  className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold transition"
                 >
                   Сохранить Задачу
                 </button>

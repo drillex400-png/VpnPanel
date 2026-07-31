@@ -5,10 +5,10 @@ import { AnimatePresence, motion } from "motion/react";
 import { useToastState } from "../contexts/ToastContext";
 
 const STYLES: Record<string, { icon: React.ReactNode; classes: string }> = {
-  success: { icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" />, classes: "border-emerald-800 bg-emerald-950/90" },
+  success: { icon: <CheckCircle2 className="w-4 h-4 text-violet-400" />, classes: "border-violet-800 bg-violet-950/90" },
   error: { icon: <XCircle className="w-4 h-4 text-rose-400" />, classes: "border-rose-800 bg-rose-950/90" },
   warning: { icon: <AlertTriangle className="w-4 h-4 text-amber-400" />, classes: "border-amber-800 bg-amber-950/90" },
-  info: { icon: <Info className="w-4 h-4 text-cyan-400" />, classes: "border-cyan-800 bg-cyan-950/90" },
+  info: { icon: <Info className="w-4 h-4 text-fuchsia-400" />, classes: "border-fuchsia-800 bg-fuchsia-950/90" },
 };
 
 export const ToastContainer: React.FC = () => {

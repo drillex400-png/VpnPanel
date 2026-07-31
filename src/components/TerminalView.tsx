@@ -103,7 +103,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ server }) => {
       {/* Terminal Title Bar */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-cyan-400">
+          <div className="w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-fuchsia-400">
             <TerminalIcon className="w-5 h-5" />
           </div>
           <div>
@@ -143,7 +143,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ server }) => {
           <button
             key={idx}
             onClick={() => handleRunCommand(chip.cmd)}
-            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-mono rounded-xl border border-slate-700/80 shrink-0 text-xs transition"
+            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-fuchsia-300 font-mono rounded-xl border border-slate-700/80 shrink-0 text-xs transition"
           >
             {chip.label}
           </button>
@@ -154,8 +154,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ server }) => {
       <div className="bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl p-4 font-mono text-xs text-slate-200 space-y-4 min-h-[420px] max-h-[60vh] overflow-y-auto">
         {history.map((item, idx) => (
           <div key={idx} className="space-y-1">
-            <div className="flex items-center gap-2 text-cyan-400 font-semibold">
-              <span className="text-emerald-400">{server.username}@{server.host}:~$</span>
+            <div className="flex items-center gap-2 text-fuchsia-400 font-semibold">
+              <span className="text-violet-400">{server.username}@{server.host}:~$</span>
               <span>{item.command}</span>
               <span className="text-[10px] text-slate-600 font-normal ml-auto">
                 {item.timestamp}
@@ -173,7 +173,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ server }) => {
           </div>
         ))}
         {isExecuting && (
-          <div className="text-cyan-400 font-semibold animate-pulse">
+          <div className="text-fuchsia-400 font-semibold animate-pulse">
             Выполнение команды по SSH...
           </div>
         )}
@@ -212,7 +212,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ server }) => {
                 }
               }
             }}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold rounded-xl border border-slate-700"
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-fuchsia-300 font-bold rounded-xl border border-slate-700"
           >
             ↑ Пред.
           </button>
@@ -227,7 +227,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ server }) => {
                 setInputCommand("");
               }
             }}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold rounded-xl border border-slate-700"
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-fuchsia-300 font-bold rounded-xl border border-slate-700"
           >
             ↓ След.
           </button>
@@ -241,12 +241,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ server }) => {
             value={inputCommand}
             onChange={(e) => setInputCommand(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-500 shadow-inner"
+            className="flex-1 bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 shadow-inner"
           />
           <button
             onClick={() => handleRunCommand()}
             disabled={isExecuting || !inputCommand.trim()}
-            className="px-4 py-3 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 text-white font-semibold text-xs rounded-2xl shadow-md transition flex items-center gap-1.5 shrink-0"
+            className="px-4 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 disabled:bg-slate-800 text-white font-semibold text-xs rounded-2xl shadow-md transition flex items-center gap-1.5 shrink-0"
           >
             <Send className="w-4 h-4" />
             <span className="hidden sm:inline">Выполнить</span>

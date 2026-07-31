@@ -174,7 +174,7 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-emerald-400" />
+              <Cpu className="w-5 h-5 text-violet-400" />
               Диспетчер Процессов (Визуализатор htop)
             </h2>
             <p className="text-xs text-gray-400">
@@ -186,7 +186,7 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
             <button
               onClick={fetchProcesses}
               disabled={isLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#171717] hover:bg-[#202020] text-emerald-400 border border-[#242424] rounded-xl font-semibold transition disabled:opacity-50 mr-1"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#171717] hover:bg-[#202020] text-violet-400 border border-[#242424] rounded-xl font-semibold transition disabled:opacity-50 mr-1"
               title="Обновить список процессов"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
@@ -197,7 +197,7 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
               onClick={() => setSortBy("cpuPct")}
               className={`px-3 py-1.5 rounded-xl transition ${
                 sortBy === "cpuPct"
-                  ? "bg-emerald-600 text-white font-semibold"
+                  ? "bg-violet-600 text-white font-semibold"
                   : "bg-[#171717] text-gray-400 hover:bg-[#202020]"
               }`}
             >
@@ -234,7 +234,7 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
             placeholder="Фильтр процессов по имени, PID или пользователю (например: nginx, postgres)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#171717] border border-[#242424] rounded-2xl pl-9 pr-4 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition"
+            className="w-full bg-[#171717] border border-[#242424] rounded-2xl pl-9 pr-4 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-violet-500 transition"
           />
         </div>
       </div>
@@ -261,14 +261,14 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
                   onClick={() => setSelectedProcess(proc)}
                   className="hover:bg-[#171717] transition cursor-pointer group"
                 >
-                  <td className="py-2.5 px-3 font-semibold text-emerald-400">
+                  <td className="py-2.5 px-3 font-semibold text-violet-400">
                     {proc.pid}
                   </td>
                   <td className="py-2.5 px-3 text-gray-500 font-sans">{proc.user}</td>
                   <td className="py-2.5 px-3">
                     <span
                       className={`font-semibold ${
-                        proc.cpuPct > 10 ? "text-amber-400" : "text-emerald-400"
+                        proc.cpuPct > 10 ? "text-amber-400" : "text-violet-400"
                       }`}
                     >
                       {proc.cpuPct}%
@@ -311,7 +311,7 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
           <div className="bg-[#0f0f0f] border border-[#242424] rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#242424] pb-3">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <Cpu className="w-5 h-5 text-emerald-400" />
+                <Cpu className="w-5 h-5 text-violet-400" />
                 Управление процессом: PID {selectedProcess.pid}
               </div>
               <button
@@ -324,7 +324,7 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
 
             <div className="bg-[#171717] p-3.5 rounded-2xl border border-[#242424] space-y-1 font-mono text-xs text-gray-300">
               <div>
-                Команда: <strong className="text-emerald-400">{selectedProcess.command}</strong>
+                Команда: <strong className="text-violet-400">{selectedProcess.command}</strong>
               </div>
               <div className="text-[11px] text-gray-400 flex flex-wrap gap-4">
                 <span>Пользователь: {selectedProcess.user}</span>
@@ -353,7 +353,7 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
                 </button>
                 <button
                   onClick={() => handleSendSignal("1")}
-                  className="p-2.5 bg-[#171717] hover:bg-[#202020] text-emerald-400 border border-[#2d2d2d] rounded-2xl text-xs font-bold transition flex flex-col items-center justify-center"
+                  className="p-2.5 bg-[#171717] hover:bg-[#202020] text-violet-400 border border-[#2d2d2d] rounded-2xl text-xs font-bold transition flex flex-col items-center justify-center"
                 >
                   <span>SIGHUP (1)</span>
                   <span className="text-[9px] text-gray-400 font-normal">Обновить конфиг</span>
@@ -365,7 +365,7 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
             <div className="space-y-2 pt-2 border-t border-[#242424]">
               <label className="text-xs text-gray-400 font-semibold flex items-center justify-between">
                 <span>Приоритет Renice (-20 высокий, +19 низкий)</span>
-                <span className="text-emerald-400 font-mono">{reniceValue}</span>
+                <span className="text-violet-400 font-mono">{reniceValue}</span>
               </label>
               <div className="flex items-center gap-3">
                 <input
@@ -374,11 +374,11 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
                   max="19"
                   value={reniceValue}
                   onChange={(e) => setReniceValue(Number(e.target.value))}
-                  className="w-full accent-emerald-500"
+                  className="w-full accent-violet-500"
                 />
                 <button
                   onClick={handleApplyRenice}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shrink-0"
+                  className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shrink-0"
                 >
                   Применить
                 </button>

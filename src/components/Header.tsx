@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-3.5 sm:px-6 py-3 flex items-center justify-between gap-3">
         {/* Brand & App Title */}
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-emerald-500/20 via-slate-800 to-cyan-500/20 border border-emerald-500/30 flex items-center justify-center shadow-lg shadow-emerald-950/30 text-emerald-400 shrink-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-violet-500/20 via-slate-800 to-fuchsia-500/20 border border-violet-500/30 flex items-center justify-center shadow-lg shadow-violet-950/30 text-violet-400 shrink-0">
             <Server className="w-5 h-5" />
           </div>
           <div className="min-w-0">
@@ -83,12 +83,12 @@ export const Header: React.FC<HeaderProps> = ({
               <h1 className="font-extrabold text-sm sm:text-base tracking-tight text-white leading-tight truncate">
                 Linux Cockpit
               </h1>
-              <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-inner">
+              <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/10 text-violet-400 border border-violet-500/30 shadow-inner">
                 PRO SSH v2.4
               </span>
             </div>
             <p className="text-[10px] sm:text-[11px] text-slate-400 flex items-center gap-1.5 uppercase tracking-wider font-semibold truncate mt-0.5">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400 animate-pulse shrink-0"></span>
+              <span className="inline-block w-2 h-2 rounded-full bg-violet-400 shadow-sm shadow-violet-400 animate-pulse shrink-0"></span>
               <span className="truncate">Центр управления серверами</span>
             </p>
           </div>
@@ -105,7 +105,7 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <span
                 className={`w-2.5 h-2.5 rounded-full shrink-0 shadow-sm ${
-                  currentServer.isDemo ? "bg-emerald-400 shadow-emerald-500/50" : "bg-cyan-400 shadow-cyan-500/50"
+                  currentServer.isDemo ? "bg-violet-400 shadow-violet-500/50" : "bg-fuchsia-400 shadow-fuchsia-500/50"
                 }`}
               />
               <span className="truncate max-w-[95px] xs:max-w-[130px] sm:max-w-[190px]">
@@ -133,7 +133,7 @@ export const Header: React.FC<HeaderProps> = ({
                         key={srv.id}
                         className={`group flex items-center justify-between px-3.5 py-2.5 text-xs transition cursor-pointer ${
                           srv.id === currentServer.id
-                            ? "bg-emerald-500/10 text-emerald-300 font-semibold border-l-2 border-emerald-400"
+                            ? "bg-violet-500/10 text-violet-300 font-semibold border-l-2 border-violet-400"
                             : "text-slate-300 hover:bg-slate-800/60"
                         }`}
                         onClick={() => {
@@ -145,7 +145,7 @@ export const Header: React.FC<HeaderProps> = ({
                           <Server
                             className={`w-4 h-4 shrink-0 ${
                               srv.id === currentServer.id
-                                ? "text-emerald-400"
+                                ? "text-violet-400"
                                 : "text-slate-500"
                             }`}
                           />
@@ -158,7 +158,7 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
 
                         {srv.isDemo ? (
-                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold shrink-0">
+                          <span className="text-[10px] bg-violet-500/10 text-violet-400 border border-violet-500/30 px-2 py-0.5 rounded-full font-bold shrink-0">
                             Демо
                           </span>
                         ) : (
@@ -183,7 +183,7 @@ export const Header: React.FC<HeaderProps> = ({
                         setShowServerDropdown(false);
                         onOpenConnectModal();
                       }}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition shadow-lg shadow-emerald-950/50"
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold text-xs transition shadow-lg shadow-violet-950/50"
                     >
                       <Plus className="w-4 h-4" />
                       Подключить SSH Сервер
@@ -202,14 +202,14 @@ export const Header: React.FC<HeaderProps> = ({
             title="Обновить метрики сервера"
           >
             <RefreshCw
-              className={`w-4 h-4 ${isRefreshing ? "animate-spin text-emerald-400" : ""}`}
+              className={`w-4 h-4 ${isRefreshing ? "animate-spin text-violet-400" : ""}`}
             />
           </button>
 
           {/* Quick Actions Button */}
           <button
             onClick={() => setShowQuickActionModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition shadow-md shadow-emerald-950/40 active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold text-xs transition shadow-md shadow-violet-950/40 active:scale-95"
           >
             <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
             <span className="hidden sm:inline">Быстрые действия</span>
@@ -261,8 +261,8 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Sub-bar Connection Status indicator */}
       <div className="bg-[#07090f]/90 px-3.5 sm:px-6 py-1.5 text-[11px] border-t border-white/[0.06] flex items-center justify-between text-slate-400 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-2.5 sm:gap-3 truncate">
-          <span className="flex items-center gap-1.5 text-emerald-400 font-semibold shrink-0">
-            <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
+          <span className="flex items-center gap-1.5 text-violet-400 font-semibold shrink-0">
+            <Radio className="w-3.5 h-3.5 animate-pulse text-violet-400" />
             SSH Active
           </span>
           <span className="text-slate-700">|</span>
@@ -271,7 +271,7 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
           <span className="hidden sm:inline text-slate-700">|</span>
           <span className="hidden sm:inline text-slate-400">
-            Задержка: <strong className="text-emerald-400 font-mono">{latencyMs} мс</strong>
+            Задержка: <strong className="text-violet-400 font-mono">{latencyMs} мс</strong>
           </span>
         </div>
 
@@ -312,7 +312,7 @@ export const Header: React.FC<HeaderProps> = ({
                   }}
                   className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
                 >
-                  <div className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
+                  <div className="text-xs font-bold text-fuchsia-400 flex items-center gap-1.5">
                     <RefreshCw className="w-4 h-4 shrink-0" />
                     Перезапустить Nginx
                   </div>
@@ -327,7 +327,7 @@ export const Header: React.FC<HeaderProps> = ({
                   }}
                   className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
                 >
-                  <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                  <div className="text-xs font-bold text-violet-400 flex items-center gap-1.5">
                     <Zap className="w-4 h-4 shrink-0" />
                     Освободить Кэш ОЗУ
                   </div>

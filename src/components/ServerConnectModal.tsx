@@ -106,7 +106,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400 shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-fuchsia-950 border border-fuchsia-800 flex items-center justify-center text-fuchsia-400 shrink-0">
               <Server className="w-5 h-5" />
             </div>
             <div>
@@ -124,9 +124,9 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
         </div>
 
         {/* Quick Demo Preset Button */}
-        <div className="bg-cyan-950/40 border border-cyan-800/60 p-3 rounded-xl flex items-center justify-between">
-          <div className="text-xs text-cyan-200">
-            <span className="font-bold text-cyan-300">Quick Test?</span> Fill demo server parameters with 1 tap.
+        <div className="bg-fuchsia-950/40 border border-fuchsia-800/60 p-3 rounded-xl flex items-center justify-between">
+          <div className="text-xs text-fuchsia-200">
+            <span className="font-bold text-fuchsia-300">Quick Test?</span> Fill demo server parameters with 1 tap.
           </div>
           <button
             onClick={() => {
@@ -136,7 +136,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
               setUsername("ubuntu");
               setPassword("••••••••");
             }}
-            className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs rounded-lg transition shrink-0"
+            className="px-3 py-1 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-semibold text-xs rounded-lg transition shrink-0"
           >
             Load Demo Presets
           </button>
@@ -153,7 +153,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
               placeholder="e.g. Production Web-01 (Ubuntu)"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-fuchsia-500"
             />
           </div>
 
@@ -167,7 +167,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
                 placeholder="192.168.1.100 or server.com"
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white font-mono focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white font-mono focus:outline-none focus:border-fuchsia-500"
               />
             </div>
 
@@ -179,7 +179,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
                 type="number"
                 value={port}
                 onChange={(e) => setPort(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white font-mono focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white font-mono focus:outline-none focus:border-fuchsia-500"
               />
             </div>
           </div>
@@ -193,7 +193,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
               placeholder="ubuntu or root"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white font-mono focus:outline-none focus:border-cyan-500"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white font-mono focus:outline-none focus:border-fuchsia-500"
             />
           </div>
 
@@ -207,7 +207,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
                 onClick={() => setAuthType("password")}
                 className={`py-2 px-3 rounded-xl font-semibold border transition ${
                   authType === "password"
-                    ? "bg-cyan-950 text-cyan-300 border-cyan-500"
+                    ? "bg-fuchsia-950 text-fuchsia-300 border-fuchsia-500"
                     : "bg-slate-950 text-slate-400 border-slate-800"
                 }`}
               >
@@ -218,7 +218,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
                 onClick={() => setAuthType("key")}
                 className={`py-2 px-3 rounded-xl font-semibold border transition ${
                   authType === "key"
-                    ? "bg-cyan-950 text-cyan-300 border-cyan-500"
+                    ? "bg-fuchsia-950 text-fuchsia-300 border-fuchsia-500"
                     : "bg-slate-950 text-slate-400 border-slate-800"
                 }`}
               >
@@ -237,7 +237,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
                 placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white font-mono focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white font-mono focus:outline-none focus:border-fuchsia-500"
               />
             </div>
           ) : (
@@ -249,7 +249,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
                 placeholder="-----BEGIN OPENSSH PRIVATE KEY-----..."
                 value={privateKey}
                 onChange={(e) => setPrivateKey(e.target.value)}
-                className="w-full h-24 bg-slate-950 border border-slate-800 rounded-xl p-3 text-white font-mono text-[11px] focus:outline-none focus:border-cyan-500 resize-none"
+                className="w-full h-24 bg-slate-950 border border-slate-800 rounded-xl p-3 text-white font-mono text-[11px] focus:outline-none focus:border-fuchsia-500 resize-none"
               />
             </div>
           )}
@@ -259,12 +259,12 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
             <div
               className={`p-3 rounded-xl text-xs font-medium border flex items-center gap-2 ${
                 testResult.success
-                  ? "bg-emerald-950/80 border-emerald-800 text-emerald-300"
+                  ? "bg-violet-950/80 border-violet-800 text-violet-300"
                   : "bg-rose-950/80 border-rose-800 text-rose-300"
               }`}
             >
               {testResult.success ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-violet-400 shrink-0" />
               ) : (
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
               )}
@@ -281,7 +281,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
             disabled={isTesting}
             className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-semibold text-xs transition flex items-center gap-1.5"
           >
-            {isTesting && <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />}
+            {isTesting && <RefreshCw className="w-3.5 h-3.5 animate-spin text-fuchsia-400" />}
             Test Connection
           </button>
 
@@ -294,7 +294,7 @@ export const ServerConnectModal: React.FC<ServerConnectModalProps> = ({
             </button>
             <button
               onClick={handleSave}
-              className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-semibold text-xs shadow-md transition"
+              className="px-5 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl font-semibold text-xs shadow-md transition"
             >
               Save & Connect
             </button>

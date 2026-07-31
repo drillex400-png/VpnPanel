@@ -241,14 +241,14 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
             <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
               {rules.map((rule) => (
                 <tr key={rule.id} className="hover:bg-slate-800/40 transition">
-                  <td className="py-3 px-3 font-semibold text-cyan-300">
+                  <td className="py-3 px-3 font-semibold text-fuchsia-300">
                     {rule.port} / {rule.protocol.toUpperCase()}
                   </td>
                   <td className="py-3 px-3">
                     <span
                       className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         rule.action === "ALLOW"
-                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800/60"
+                          ? "bg-violet-950 text-violet-400 border border-violet-800/60"
                           : "bg-rose-950 text-rose-400 border border-rose-800/60"
                       }`}
                     >
@@ -298,7 +298,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
                   <td className="py-2.5 px-3 font-bold text-amber-400">:{lp.port}</td>
                   <td className="py-2.5 px-3 text-slate-400">{lp.proto}</td>
                   <td className="py-2.5 px-3 font-sans text-xs text-slate-200">{lp.process}</td>
-                  <td className="py-2.5 px-3 text-right text-cyan-400 font-bold">{lp.pid}</td>
+                  <td className="py-2.5 px-3 text-right text-fuchsia-400 font-bold">{lp.pid}</td>
                 </tr>
               ))}
             </tbody>

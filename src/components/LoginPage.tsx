@@ -29,10 +29,10 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#07090e] bg-radial-glow text-slate-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#0a0712] bg-radial-glow text-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
         <div className="flex flex-col items-center text-center mb-6">
-          <span className="p-3 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 text-emerald-400 shadow-lg shadow-emerald-500/10 mb-3">
+          <span className="p-3 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 border border-violet-500/30 text-violet-400 shadow-lg shadow-violet-500/10 mb-3">
             <ShieldCheck className="w-7 h-7" />
           </span>
           <h1 className="text-xl font-black text-white tracking-tight">PanelVPN</h1>
@@ -54,7 +54,7 @@ export const LoginPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@example.com"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500"
               />
             </div>
           </div>
@@ -70,7 +70,7 @@ export const LoginPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Минимум 8 символов"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500"
               />
             </div>
           </div>
@@ -87,7 +87,7 @@ export const LoginPage: React.FC = () => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Повторите пароль"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500"
                 />
               </div>
             </div>
@@ -103,7 +103,7 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm rounded-xl py-2.5 flex items-center justify-center gap-2 transition active:scale-95 disabled:opacity-60"
+            className="w-full bg-violet-500 hover:bg-violet-400 text-slate-950 font-bold text-sm rounded-xl py-2.5 flex items-center justify-center gap-2 transition active:scale-95 disabled:opacity-60"
           >
             {isSubmitting ? (
               <Loader2 className="w-4 h-4 animate-spin" />

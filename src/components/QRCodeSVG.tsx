@@ -100,7 +100,7 @@ export const QRCodeSVG: React.FC<QRCodeSVGProps> = ({ value, size = 180, classNa
                 y={r * moduleSize}
                 width={moduleSize + 0.3}
                 height={moduleSize + 0.3}
-                fill="#090d16"
+                fill="#120c1e"
                 rx={0.8}
               />
             ) : null

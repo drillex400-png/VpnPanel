@@ -28,19 +28,19 @@ export default function ResourceHistoryChart({ history }: ResourceHistoryChartPr
       <AreaChart data={history}>
         <defs>
           <linearGradient id="cpuGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#10b981" stopOpacity={0.45} />
-            <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.45} />
+            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.0} />
           </linearGradient>
           <linearGradient id="ramGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.45} />
-            <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+            <stop offset="5%" stopColor="#d946ef" stopOpacity={0.45} />
+            <stop offset="95%" stopColor="#d946ef" stopOpacity={0.0} />
           </linearGradient>
         </defs>
         <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickLine={false} />
         <YAxis stroke="#64748b" fontSize={10} domain={[0, 100]} tickLine={false} />
         <Tooltip
           contentStyle={{
-            backgroundColor: "#090d16",
+            backgroundColor: "#120c1e",
             borderColor: "rgba(255, 255, 255, 0.12)",
             borderRadius: "16px",
             fontSize: "12px",
@@ -51,7 +51,7 @@ export default function ResourceHistoryChart({ history }: ResourceHistoryChartPr
         <Area
           type="monotone"
           dataKey="cpu"
-          stroke="#10b981"
+          stroke="#8b5cf6"
           strokeWidth={2.5}
           fillOpacity={1}
           fill="url(#cpuGrad)"
@@ -59,7 +59,7 @@ export default function ResourceHistoryChart({ history }: ResourceHistoryChartPr
         <Area
           type="monotone"
           dataKey="ramPct"
-          stroke="#06b6d4"
+          stroke="#d946ef"
           strokeWidth={2.5}
           fillOpacity={1}
           fill="url(#ramGrad)"

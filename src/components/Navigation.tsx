@@ -45,7 +45,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   return (
     <>
       {/* Mobile Bottom Navigation Bar (Touch & Scroll Optimized) */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#090d16]/95 backdrop-blur-2xl border-t border-white/10 z-40 py-2 px-1.5 shadow-[0_-8px_30px_rgba(0,0,0,0.7)] overflow-x-auto no-scrollbar scroll-smooth">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#120c1e]/95 backdrop-blur-2xl border-t border-white/10 z-40 py-2 px-1.5 shadow-[0_-8px_30px_rgba(0,0,0,0.7)] overflow-x-auto no-scrollbar scroll-smooth">
         <div className="flex items-center justify-between min-w-max mx-auto px-1 gap-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
@@ -59,7 +59,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
                 className={`relative flex flex-col items-center justify-center py-2 px-3 min-w-[66px] min-h-[50px] rounded-2xl shrink-0 active:scale-95 ${
-                  isActive ? "text-emerald-300 font-bold" : "text-slate-400 hover:text-slate-200"
+                  isActive ? "text-violet-300 font-bold" : "text-slate-400 hover:text-slate-200"
                 }`}
                 id={`tab-btn-${item.id}`}
               >
@@ -69,22 +69,22 @@ export const Navigation: React.FC<NavigationProps> = ({
                 {isActive && (
                   <motion.div
                     layoutId="mobile-nav-active-bg"
-                    className="absolute inset-0 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl shadow-lg shadow-emerald-950/40"
+                    className="absolute inset-0 bg-violet-500/10 border border-violet-500/25 rounded-2xl shadow-lg shadow-violet-950/40"
                     transition={ACTIVE_SPRING}
                   />
                 )}
                 {isActive && (
                   <motion.span
                     layoutId="mobile-nav-active-top"
-                    className="absolute -top-2 w-7 h-1 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/80"
+                    className="absolute -top-2 w-7 h-1 rounded-full bg-violet-400 shadow-sm shadow-violet-400/80"
                     transition={ACTIVE_SPRING}
                   />
                 )}
 
                 <div className="relative z-10">
-                  <Icon className={`w-5 h-5 transition-transform ${isActive ? "text-emerald-400 scale-110" : "text-slate-400"}`} />
+                  <Icon className={`w-5 h-5 transition-transform ${isActive ? "text-violet-400 scale-110" : "text-slate-400"}`} />
                   {hasBadge && (
-                    <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-[#090d16] animate-pulse" />
+                    <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-[#120c1e] animate-pulse" />
                   )}
                 </div>
                 <span className="relative z-10 text-[10px] font-semibold tracking-tight mt-1 leading-none whitespace-nowrap">
@@ -97,7 +97,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       </nav>
 
       {/* Desktop Sidebar Navigation */}
-      <aside className="hidden lg:flex flex-col w-64 bg-[#090d16]/90 backdrop-blur-xl border-r border-white/10 shrink-0 p-4 space-y-6">
+      <aside className="hidden lg:flex flex-col w-64 bg-[#120c1e]/90 backdrop-blur-xl border-r border-white/10 shrink-0 p-4 space-y-6">
         <div>
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mb-3">
             Меню Навигации
@@ -118,19 +118,19 @@ export const Navigation: React.FC<NavigationProps> = ({
                   key={item.id}
                   onClick={() => onTabChange(item.id)}
                   className={`relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl font-semibold text-xs overflow-hidden ${
-                    isActive ? "text-emerald-300 font-bold" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                    isActive ? "text-violet-300 font-bold" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
                   }`}
                 >
                   {isActive && (
                     <motion.div
                       layoutId="desktop-nav-active-bg"
-                      className="absolute inset-0 bg-gradient-to-r from-emerald-500/15 to-teal-500/10 border border-emerald-500/30 rounded-2xl shadow-md shadow-emerald-950/30"
+                      className="absolute inset-0 bg-gradient-to-r from-violet-500/15 to-fuchsia-500/10 border border-violet-500/30 rounded-2xl shadow-md shadow-violet-950/30"
                       transition={ACTIVE_SPRING}
                     />
                   )}
 
                   <div className="relative z-10 flex items-center gap-3">
-                    <Icon className={`w-4 h-4 ${isActive ? "text-emerald-400" : "text-slate-400"}`} />
+                    <Icon className={`w-4 h-4 ${isActive ? "text-violet-400" : "text-slate-400"}`} />
                     <span>{item.label}</span>
                   </div>
 
@@ -149,10 +149,10 @@ export const Navigation: React.FC<NavigationProps> = ({
         <div className="mt-auto bg-slate-900/90 border border-white/10 rounded-3xl p-4 space-y-2.5 shadow-xl">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-300 font-semibold">Состояние системы</span>
-            <span className="text-emerald-400 font-extrabold font-mono">96%</span>
+            <span className="text-violet-400 font-extrabold font-mono">96%</span>
           </div>
           <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden p-0.5 border border-white/5">
-            <div className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full w-[96%] rounded-full shadow-sm" />
+            <div className="bg-gradient-to-r from-violet-500 to-fuchsia-400 h-full w-[96%] rounded-full shadow-sm" />
           </div>
           <p className="text-[10px] text-slate-400 leading-normal">
             Все ключевые демоны активны. Критических ошибок накопителя не обнаружено.

@@ -150,7 +150,7 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <FileText className="w-5 h-5 text-cyan-400" />
+              <FileText className="w-5 h-5 text-fuchsia-400" />
               Логи Сервера в Реальном Времени и AI Диагностика
             </h2>
             <p className="text-xs text-slate-400">
@@ -162,7 +162,7 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
             <button
               onClick={fetchLogs}
               disabled={isLoading}
-              className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 rounded-xl font-semibold text-xs transition disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-fuchsia-400 border border-slate-700 rounded-xl font-semibold text-xs transition disabled:opacity-50"
               title="Обновить логи"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
@@ -170,7 +170,7 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
             </button>
             <button
               onClick={() => handleRunAiDiagnosis()}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-purple-950/40 transition"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-purple-950/40 transition"
             >
               <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
               Диагностика Логов Gemini AI
@@ -187,7 +187,7 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
               onClick={() => setLevelFilter(lvl)}
               className={`px-2.5 py-1 rounded-lg transition font-medium text-[11px] ${
                 levelFilter === lvl
-                  ? "bg-cyan-600 text-white"
+                  ? "bg-fuchsia-600 text-white"
                   : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
               }`}
             >
@@ -221,7 +221,7 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
             placeholder="Поиск в логах (например: Failed password, Nginx error)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 transition"
           />
         </div>
       </div>
@@ -230,8 +230,8 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
       <div className="bg-slate-950 border border-slate-800 rounded-2xl shadow-md p-4 space-y-2 font-mono text-xs overflow-hidden">
         <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-2">
           <span>Поток Логов Сервера ({filteredLogs.length} записей)</span>
-          <span className="text-emerald-400 flex items-center gap-1 font-sans">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-violet-400 flex items-center gap-1 font-sans">
+            <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
             Прямой Эфир
           </span>
         </div>
@@ -380,7 +380,7 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
                   {/* Suggested Commands */}
                   {aiResult.suggestedFixes && (
                     <div className="space-y-2">
-                      <div className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                      <div className="text-xs font-semibold text-violet-400 flex items-center gap-1.5">
                         <Terminal className="w-4 h-4" />
                         Рекомендуемые Команды Bash (Выполнение по SSH)
                       </div>
@@ -389,12 +389,12 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
                         {aiResult.suggestedFixes.map((cmd: string, idx: number) => (
                           <div
                             key={idx}
-                            className="flex items-center justify-between bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-xs font-mono text-cyan-300"
+                            className="flex items-center justify-between bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-xs font-mono text-fuchsia-300"
                           >
                             <span className="truncate">{cmd}</span>
                             <button
                               onClick={() => handleExecuteFix(cmd)}
-                              className="ml-2 px-2.5 py-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg text-[10px] font-sans font-semibold shrink-0 transition"
+                              className="ml-2 px-2.5 py-1 bg-fuchsia-700 hover:bg-fuchsia-600 text-white rounded-lg text-[10px] font-sans font-semibold shrink-0 transition"
                             >
                               Выполнить
                             </button>

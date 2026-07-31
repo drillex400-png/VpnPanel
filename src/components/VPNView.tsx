@@ -61,7 +61,7 @@ const VPN_PROTOCOLS: VPNProtocolCatalog[] = [
       "Поддержка gRPC и X-TLS Vision flow"
     ],
     recommendedApps: ["v2rayNG", "Happ", "Streisand", "NekoBox", "Amnezia"],
-    gradient: "from-emerald-500/20 via-teal-500/10 to-transparent",
+    gradient: "from-violet-500/20 via-fuchsia-500/10 to-transparent",
     isPopular: true,
   },
   {
@@ -81,7 +81,7 @@ const VPN_PROTOCOLS: VPNProtocolCatalog[] = [
       "Защита от активного зондирования ТСПУ"
     ],
     recommendedApps: ["sing-box", "v2rayNG", "Shadowrocket", "NekoBox"],
-    gradient: "from-cyan-500/20 via-blue-500/10 to-transparent",
+    gradient: "from-fuchsia-500/20 via-blue-500/10 to-transparent",
     isPopular: true,
   },
   {
@@ -155,7 +155,7 @@ const VPN_PROTOCOLS: VPNProtocolCatalog[] = [
       "Минимальное энергопотребление на смартфоне"
     ],
     recommendedApps: ["Amnezia VPN Client (v2.0+)", "AmneziaWG App"],
-    gradient: "from-emerald-500/20 via-lime-500/10 to-transparent",
+    gradient: "from-violet-500/20 via-lime-500/10 to-transparent",
   },
 ];
 
@@ -1141,13 +1141,13 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
       {/* Top Header & Active Status Banner */}
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-900/95 via-[#0c1427] to-slate-950 border border-slate-800/80 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-xl">
         {/* Glow ambient meshes */}
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-violet-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-1/4 -mb-10 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
-              <span className="p-2.5 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 text-emerald-400 shadow-lg shadow-emerald-500/10 shrink-0">
+              <span className="p-2.5 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 border border-violet-500/30 text-violet-400 shadow-lg shadow-violet-500/10 shrink-0">
                 <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
               </span>
               <div>
@@ -1155,7 +1155,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                   <h1 className="text-base sm:text-2xl font-black text-white tracking-tight">
                     ВПН Менеджер
                   </h1>
-                  <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                  <span className="text-[10px] bg-violet-500/15 text-violet-300 border border-violet-500/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
                     Anti-DPI Node
                   </span>
                 </div>
@@ -1170,12 +1170,12 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
             <div className="bg-slate-950/90 border border-slate-800/90 rounded-2xl px-3 py-1.5 sm:px-3.5 sm:py-2 flex items-center gap-2.5 shrink-0 shadow-inner">
               <div className="relative flex items-center justify-center">
-                <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <Radio className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-violet-400" />
               </div>
               <div>
                 <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Активно на сервере</div>
-                <div className="text-[11px] sm:text-xs font-bold text-emerald-300 font-mono">
+                <div className="text-[11px] sm:text-xs font-bold text-violet-300 font-mono">
                   {installedServices.filter((s) => s.status === "active").length} / {installedServices.length} нод
                 </div>
               </div>
@@ -1198,7 +1198,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
               onClick={() => setActiveTab("catalog")}
               className={`py-2.5 px-2 sm:px-4 rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1.5 active:scale-95 ${
                 activeTab === "catalog"
-                  ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
+                  ? "bg-violet-500 text-slate-950 shadow-md shadow-violet-500/20"
                   : "text-slate-400 hover:text-white hover:bg-slate-800/60"
               }`}
             >
@@ -1218,11 +1218,11 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                   : "text-slate-400 hover:text-white hover:bg-slate-800/60"
               }`}
             >
-              <Server className={`w-4 h-4 shrink-0 ${activeTab === "installed" ? "text-emerald-400" : ""}`} />
+              <Server className={`w-4 h-4 shrink-0 ${activeTab === "installed" ? "text-violet-400" : ""}`} />
               <span className="hidden sm:inline">Установленные ВПН</span>
               <span className="sm:hidden text-[11px]">Мои ВПН</span>
               {installedServices.length > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono ${activeTab === "installed" ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-slate-400"}`}>
+                <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono ${activeTab === "installed" ? "bg-violet-500/20 text-violet-400" : "bg-slate-800 text-slate-400"}`}>
                   {installedServices.length}
                 </span>
               )}
@@ -1249,7 +1249,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
         <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
             <h2 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2 tracking-wide uppercase">
-              <Zap className="w-4 h-4 text-emerald-400" />
+              <Zap className="w-4 h-4 text-violet-400" />
               <span>Каталог протоколов авто-деплоя</span>
             </h2>
             <span className="text-[10px] sm:text-[11px] text-slate-400 font-mono">1-Click установка</span>
@@ -1261,7 +1261,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                 key={protocol.id}
                 className={`group relative bg-slate-900/60 backdrop-blur-xl border rounded-3xl p-4 sm:p-5 transition-all duration-300 hover:scale-[1.01] flex flex-col justify-between overflow-hidden shadow-xl ${
                   protocol.isPopular
-                    ? "border-emerald-500/40 hover:border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.12)]"
+                    ? "border-violet-500/40 hover:border-violet-400 shadow-[0_0_25px_rgba(139,92,246,0.12)]"
                     : "border-slate-800/80 hover:border-slate-700 shadow-slate-950/50"
                 }`}
               >
@@ -1271,7 +1271,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                   <div className="flex items-start justify-between gap-2">
                     <span className={`text-[9px] sm:text-[10px] font-black tracking-wider uppercase px-2.5 py-1 rounded-xl border ${
                       protocol.isPopular 
-                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" 
+                        ? "bg-violet-500/10 text-violet-400 border-violet-500/30" 
                         : "bg-slate-800/60 text-slate-300 border-slate-700/60"
                     }`}>
                       {protocol.badge}
@@ -1282,7 +1282,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                   </div>
 
                   <div>
-                    <h3 className="text-base font-bold text-white group-hover:text-emerald-300 transition">
+                    <h3 className="text-base font-bold text-white group-hover:text-violet-300 transition">
                       {protocol.name}
                     </h3>
                     <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
@@ -1294,7 +1294,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                   <div className="space-y-1.5 pt-3 border-t border-slate-800/60">
                     {protocol.features.map((feat, idx) => (
                       <div key={idx} className="flex items-center gap-2 text-[11px] text-slate-300">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-violet-400 shrink-0" />
                         <span>{feat}</span>
                       </div>
                     ))}
@@ -1317,7 +1317,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                 <div className="pt-4 mt-4 border-t border-slate-800/60 space-y-3 relative z-10">
                   <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono">
                     <span className="flex items-center gap-1"><Server className="w-3 h-3" /> Порт: <strong className="text-white bg-slate-950 px-1.5 py-0.5 rounded-md border border-slate-800">{protocol.defaultPort}</strong></span>
-                    <span className="flex items-center gap-1"><Globe className="w-3 h-3 text-cyan-400" /> SNI: <strong className="text-slate-200 truncate max-w-[100px]">{protocol.defaultSni}</strong></span>
+                    <span className="flex items-center gap-1"><Globe className="w-3 h-3 text-fuchsia-400" /> SNI: <strong className="text-slate-200 truncate max-w-[100px]">{protocol.defaultSni}</strong></span>
                   </div>
 
                   <button
@@ -1326,7 +1326,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                       setDeployPort(protocol.defaultPort);
                       setDeploySni(protocol.defaultSni);
                     }}
-                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-[0_4px_15px_rgba(16,185,129,0.25)] hover:shadow-[0_4px_25px_rgba(16,185,129,0.4)] transition-all active:scale-95"
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold text-xs shadow-[0_4px_15px_rgba(139,92,246,0.25)] hover:shadow-[0_4px_25px_rgba(139,92,246,0.4)] transition-all active:scale-95"
                   >
                     <Rocket className="w-4 h-4" />
                     <span>Установить в 1 клик</span>
@@ -1344,14 +1344,14 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
           <div className="flex items-center justify-between px-1">
             <div className="space-y-0.5">
               <h2 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2 uppercase tracking-wide">
-                <Server className="w-4 h-4 text-emerald-400" />
+                <Server className="w-4 h-4 text-violet-400" />
                 <span>Активные ВПН службы</span>
               </h2>
               <p className="text-[11px] text-slate-400">Мониторинг и управление активными нодами на сервере</p>
             </div>
             <button
               onClick={checkServerVpnStatus}
-              className="group text-xs text-slate-400 hover:text-emerald-300 flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-slate-900 border border-slate-800 hover:border-emerald-500/30 rounded-xl transition-all"
+              className="group text-xs text-slate-400 hover:text-violet-300 flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-slate-900 border border-slate-800 hover:border-violet-500/30 rounded-xl transition-all"
             >
               <RefreshCw className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-500" />
               <span className="hidden sm:inline">Синхронизировать</span>
@@ -1365,14 +1365,14 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                 className="relative bg-slate-900/70 backdrop-blur-xl border border-slate-800 hover:border-slate-700/80 rounded-3xl p-4 sm:p-5 overflow-hidden shadow-xl transition group space-y-4"
               >
                 {/* Subtle top indicator line */}
-                <div className={`absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent ${service.status === "active" ? "via-emerald-500" : "via-rose-500"} to-transparent`} />
+                <div className={`absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent ${service.status === "active" ? "via-violet-500" : "via-rose-500"} to-transparent`} />
 
                 {/* Main service header & control block */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="relative flex items-center justify-center w-11 h-11 bg-slate-950 border border-slate-800 rounded-2xl shrink-0">
-                      <ShieldCheck className={`w-5 h-5 ${service.status === "active" ? "text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]" : "text-slate-500"}`} />
-                      <div className={`absolute -bottom-1 -right-1 w-3 h-3 border-2 border-slate-900 rounded-full ${service.status === "active" ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
+                      <ShieldCheck className={`w-5 h-5 ${service.status === "active" ? "text-violet-400 drop-shadow-[0_0_8px_rgba(167,139,250,0.5)]" : "text-slate-500"}`} />
+                      <div className={`absolute -bottom-1 -right-1 w-3 h-3 border-2 border-slate-900 rounded-full ${service.status === "active" ? "bg-violet-500 animate-pulse" : "bg-rose-500"}`} />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -1396,7 +1396,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                       className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                         service.status === "active"
                           ? "bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20"
-                          : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20"
+                          : "bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 border border-violet-500/20"
                       }`}
                     >
                       {service.status === "active" ? (
@@ -1415,7 +1415,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                       onClick={() => setQrModalService(service)}
                       className="px-3.5 py-2 bg-slate-100 hover:bg-white text-slate-950 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md active:scale-95"
                     >
-                      <QrCode className="w-3.5 h-3.5 text-cyan-700" />
+                      <QrCode className="w-3.5 h-3.5 text-fuchsia-700" />
                       <span>Ключ / QR</span>
                     </button>
                   </div>
@@ -1426,8 +1426,8 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                   <div className="space-y-0.5">
                     <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold">Статус</div>
                     <div className="text-xs font-bold flex items-center gap-1">
-                      <span className={`w-2 h-2 rounded-full ${service.status === "active" ? "bg-emerald-400 animate-pulse" : "bg-rose-500"}`} />
-                      <span className={service.status === "active" ? "text-emerald-400" : "text-rose-400"}>
+                      <span className={`w-2 h-2 rounded-full ${service.status === "active" ? "bg-violet-400 animate-pulse" : "bg-rose-500"}`} />
+                      <span className={service.status === "active" ? "text-violet-400" : "text-rose-400"}>
                         {service.status === "active" ? "Активен" : "Остановлен"}
                       </span>
                     </div>
@@ -1442,7 +1442,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
 
                   <div className="space-y-0.5">
                     <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold">Клиенты</div>
-                    <div className="text-xs font-mono font-bold text-cyan-300">
+                    <div className="text-xs font-mono font-bold text-fuchsia-300">
                       {service.activeClientsCount} активн.
                     </div>
                   </div>
@@ -1466,14 +1466,14 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                       type="text"
                       readOnly
                       value={service.clientLink}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-3 pr-24 py-2 text-[10px] text-emerald-300 font-mono truncate focus:outline-none focus:border-slate-700"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-3 pr-24 py-2 text-[10px] text-violet-300 font-mono truncate focus:outline-none focus:border-slate-700"
                       onClick={(e) => (e.target as HTMLInputElement).select()}
                     />
                     <button
                       onClick={() => handleCopyText(service.clientLink)}
                       className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg transition text-[10px] font-bold flex items-center gap-1 border border-slate-700"
                     >
-                      {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      {copiedLink ? <Check className="w-3 h-3 text-violet-400" /> : <Copy className="w-3 h-3" />}
                       <span>{copiedLink ? "Скопировано" : "Копировать"}</span>
                     </button>
                   </div>
@@ -1573,7 +1573,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                   {/* AI Suggested Fix Commands */}
                   {msg.suggestedFixes && msg.suggestedFixes.length > 0 && (
                     <div className="pt-3 border-t border-slate-800/80 space-y-2">
-                      <div className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+                      <div className="text-[11px] font-bold text-violet-400 flex items-center gap-1.5">
                         <Terminal className="w-3.5 h-3.5" />
                         <span>Рекомендуемые bash-команды для выполнения на сервере:</span>
                       </div>
@@ -1581,12 +1581,12 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                         {msg.suggestedFixes.map((cmd, i) => (
                           <div
                             key={i}
-                            className="bg-slate-950 border border-slate-800/90 rounded-xl p-2.5 flex items-center justify-between gap-2 font-mono text-[11px] text-emerald-300"
+                            className="bg-slate-950 border border-slate-800/90 rounded-xl p-2.5 flex items-center justify-between gap-2 font-mono text-[11px] text-violet-300"
                           >
                             <span className="truncate">{cmd}</span>
                             <button
                               onClick={() => handleExecuteFix(cmd)}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold text-[10px] rounded-lg transition shrink-0"
+                              className="px-2.5 py-1 bg-violet-600 hover:bg-violet-500 text-slate-950 font-extrabold text-[10px] rounded-lg transition shrink-0"
                             >
                               Выполнить SSH
                             </button>
@@ -1640,7 +1640,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
             <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-5 sm:p-6 space-y-5 shadow-2xl my-auto max-h-[90vh] overflow-y-auto scrollbar-thin">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                  <div className="p-2.5 rounded-2xl bg-violet-500/10 border border-violet-500/30 text-violet-400">
                     <RocketIcon className="w-5 h-5" />
                   </div>
                   <div>
@@ -1674,7 +1674,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                       type="text"
                       value={deployClientName}
                       onChange={(e) => setDeployClientName(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-violet-500"
                     />
                   </div>
 
@@ -1685,7 +1685,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                         type="number"
                         value={deployPort}
                         onChange={(e) => setDeployPort(Number(e.target.value))}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-violet-500"
                       />
                     </div>
 
@@ -1695,7 +1695,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                         type="text"
                         value={deploySni}
                         onChange={(e) => setDeploySni(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-violet-500"
                       />
                     </div>
                   </div>
@@ -1710,7 +1710,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                           onClick={() => setDeploySni(preset)}
                           className={`text-[10px] px-2.5 py-1 rounded-lg border font-mono transition ${
                             deploySni === preset
-                              ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                              ? "bg-violet-500/20 text-violet-300 border-violet-500/50"
                               : "bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700"
                           }`}
                         >
@@ -1761,7 +1761,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                         </div>
                         <div className="text-[10px] text-slate-400 flex items-center">
                           {awgVersion === "2.0" ? (
-                            <span className="text-emerald-400 font-semibold leading-tight">
+                            <span className="text-violet-400 font-semibold leading-tight">
                               ✓ Включена двойная обфускация handshake-пакетов v2.0 и защита от систем фильтрации 2026 года.
                             </span>
                           ) : (
@@ -1920,13 +1920,13 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
 
                   {/* 3X-UI FULL XRAY CONTROL PANEL */}
                   {(selectedDeployProtocol.id.startsWith("xray-") || selectedDeployProtocol.id === "shadowsocks-2022") && (
-                    <div className="bg-slate-950 border border-emerald-500/30 rounded-2xl p-3.5 space-y-3.5 shadow-xl">
+                    <div className="bg-slate-950 border border-violet-500/30 rounded-2xl p-3.5 space-y-3.5 shadow-xl">
                       <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <div className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+                        <div className="text-[11px] font-bold text-violet-400 flex items-center gap-1.5">
                           <Sliders className="w-4 h-4" />
                           <span>Панель управления Xray (3X-UI Panel):</span>
                         </div>
-                        <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/40 px-2 py-0.5 rounded-md">
+                        <span className="text-[9px] bg-violet-500/20 text-violet-300 font-mono font-bold border border-violet-500/40 px-2 py-0.5 rounded-md">
                           Xray-core v1.8.24
                         </span>
                       </div>
@@ -1938,7 +1938,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                           onClick={() => setXrayPanelSubTab("stream")}
                           className={`py-1 rounded-lg transition ${
                             xrayPanelSubTab === "stream"
-                              ? "bg-emerald-500 text-slate-950 font-bold"
+                              ? "bg-violet-500 text-slate-950 font-bold"
                               : "text-slate-400 hover:text-white"
                           }`}
                         >
@@ -1949,7 +1949,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                           onClick={() => setXrayPanelSubTab("limits")}
                           className={`py-1 rounded-lg transition ${
                             xrayPanelSubTab === "limits"
-                              ? "bg-emerald-500 text-slate-950 font-bold"
+                              ? "bg-violet-500 text-slate-950 font-bold"
                               : "text-slate-400 hover:text-white"
                           }`}
                         >
@@ -1960,7 +1960,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                           onClick={() => setXrayPanelSubTab("sniffing")}
                           className={`py-1 rounded-lg transition ${
                             xrayPanelSubTab === "sniffing"
-                              ? "bg-emerald-500 text-slate-950 font-bold"
+                              ? "bg-violet-500 text-slate-950 font-bold"
                               : "text-slate-400 hover:text-white"
                           }`}
                         >
@@ -1971,7 +1971,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                           onClick={() => setXrayPanelSubTab("routing")}
                           className={`py-1 rounded-lg transition ${
                             xrayPanelSubTab === "routing"
-                              ? "bg-emerald-500 text-slate-950 font-bold"
+                              ? "bg-violet-500 text-slate-950 font-bold"
                               : "text-slate-400 hover:text-white"
                           }`}
                         >
@@ -1984,7 +1984,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                         <div className="space-y-3 text-[11px]">
                           {/* Quick Presets */}
                           <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 space-y-1.5">
-                            <span className="text-[10px] text-emerald-400 font-bold block">Быстрые пресеты конфигураций 3X-UI:</span>
+                            <span className="text-[10px] text-violet-400 font-bold block">Быстрые пресеты конфигураций 3X-UI:</span>
                             <div className="grid grid-cols-2 gap-1.5 text-[9px]">
                               <button
                                 type="button"
@@ -1995,13 +1995,13 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                   setXrayGrpcServiceName("grpc-vless");
                                   setUtlsFingerprint("chrome");
                                 }}
-                                className="bg-slate-950 hover:bg-emerald-950/40 text-left p-1.5 rounded-lg border border-slate-800 hover:border-emerald-500/40 transition flex items-center justify-between"
+                                className="bg-slate-950 hover:bg-violet-950/40 text-left p-1.5 rounded-lg border border-slate-800 hover:border-violet-500/40 transition flex items-center justify-between"
                               >
                                 <div>
                                   <div className="font-bold text-white">🛡️ REALITY + gRPC</div>
                                   <div className="text-slate-400">Обход ТСПУ & DPI</div>
                                 </div>
-                                <span className="text-emerald-400 text-[8px] bg-emerald-500/10 px-1 py-0.5 rounded">Recom</span>
+                                <span className="text-violet-400 text-[8px] bg-violet-500/10 px-1 py-0.5 rounded">Recom</span>
                               </button>
 
                               <button
@@ -2012,13 +2012,13 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                   setXrayFlow("xtls-rprx-vision");
                                   setUtlsFingerprint("chrome");
                                 }}
-                                className="bg-slate-950 hover:bg-emerald-950/40 text-left p-1.5 rounded-lg border border-slate-800 hover:border-emerald-500/40 transition flex items-center justify-between"
+                                className="bg-slate-950 hover:bg-violet-950/40 text-left p-1.5 rounded-lg border border-slate-800 hover:border-violet-500/40 transition flex items-center justify-between"
                               >
                                 <div>
                                   <div className="font-bold text-white">⚡ REALITY + TCP Vision</div>
                                   <div className="text-slate-400">Максимальная скорость</div>
                                 </div>
-                                <span className="text-cyan-400 text-[8px] bg-cyan-500/10 px-1 py-0.5 rounded">Fast</span>
+                                <span className="text-fuchsia-400 text-[8px] bg-fuchsia-500/10 px-1 py-0.5 rounded">Fast</span>
                               </button>
 
                               <button
@@ -2029,7 +2029,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                   setXrayWsPath("/ws");
                                   setXrayWsHost("");
                                 }}
-                                className="bg-slate-950 hover:bg-emerald-950/40 text-left p-1.5 rounded-lg border border-slate-800 hover:border-emerald-500/40 transition flex items-center justify-between"
+                                className="bg-slate-950 hover:bg-violet-950/40 text-left p-1.5 rounded-lg border border-slate-800 hover:border-violet-500/40 transition flex items-center justify-between"
                               >
                                 <div>
                                   <div className="font-bold text-white">☁️ VMess + WS CDN</div>
@@ -2045,7 +2045,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                   setXraySecurity("tls");
                                   setXrayGrpcServiceName("trojan-grpc");
                                 }}
-                                className="bg-slate-950 hover:bg-emerald-950/40 text-left p-1.5 rounded-lg border border-slate-800 hover:border-emerald-500/40 transition flex items-center justify-between"
+                                className="bg-slate-950 hover:bg-violet-950/40 text-left p-1.5 rounded-lg border border-slate-800 hover:border-violet-500/40 transition flex items-center justify-between"
                               >
                                 <div>
                                   <div className="font-bold text-white">🔑 Trojan + gRPC</div>
@@ -2062,7 +2062,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                               <select
                                 value={xrayTransport}
                                 onChange={(e: any) => setXrayTransport(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500 text-[11px]"
+                                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-violet-500 text-[11px]"
                               >
                                 <option value="grpc">gRPC (Ultra stealth stream)</option>
                                 <option value="tcp">TCP (Standard Direct)</option>
@@ -2077,7 +2077,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                               <select
                                 value={xraySecurity}
                                 onChange={(e: any) => setXraySecurity(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500 text-[11px]"
+                                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-violet-500 text-[11px]"
                               >
                                 <option value="reality">REALITY (Маскировка под чужой SNI)</option>
                                 <option value="tls">Standard TLS (Сертификат)</option>
@@ -2092,7 +2092,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                               <select
                                 value={xrayFlow}
                                 onChange={(e: any) => setXrayFlow(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500 text-[11px]"
+                                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-violet-500 text-[11px]"
                               >
                                 <option value="xtls-rprx-vision">xtls-rprx-vision (Защита от DPI)</option>
                                 <option value="xtls-rprx-vision-udp-443">xtls-rprx-vision-udp-443</option>
@@ -2105,7 +2105,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                               <select
                                 value={utlsFingerprint}
                                 onChange={(e: any) => setUtlsFingerprint(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500 text-[11px]"
+                                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-violet-500 text-[11px]"
                               >
                                 <option value="chrome">Chrome Desktop</option>
                                 <option value="safari">Safari iOS</option>
@@ -2117,7 +2117,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                           {xraySecurity === "reality" && (
                             <div className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-xl space-y-2">
                               <div className="flex items-center justify-between text-[10px]">
-                                <span className="text-emerald-400 font-semibold">Параметры REALITY TLS:</span>
+                                <span className="text-violet-400 font-semibold">Параметры REALITY TLS:</span>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -2148,7 +2148,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                     type="text"
                                     value={xrayShortId}
                                     onChange={(e) => setXrayShortId(e.target.value)}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-emerald-300 font-mono"
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-violet-300 font-mono"
                                   />
                                 </div>
                               </div>
@@ -2262,7 +2262,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                               type="checkbox"
                               checked={xraySniffing}
                               onChange={(e) => setXraySniffing(e.target.checked)}
-                              className="rounded border-slate-700 text-emerald-500 focus:ring-emerald-500 bg-slate-950 w-4 h-4"
+                              className="rounded border-slate-700 text-violet-500 focus:ring-violet-500 bg-slate-950 w-4 h-4"
                             />
                           </div>
 
@@ -2275,7 +2275,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                     type="checkbox"
                                     checked={xraySniffingTls}
                                     onChange={(e) => setXraySniffingTls(e.target.checked)}
-                                    className="rounded border-slate-700 text-emerald-500 bg-slate-950"
+                                    className="rounded border-slate-700 text-violet-500 bg-slate-950"
                                   />
                                   <span>TLS / HTTPS</span>
                                 </label>
@@ -2284,7 +2284,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                     type="checkbox"
                                     checked={xraySniffingHttp}
                                     onChange={(e) => setXraySniffingHttp(e.target.checked)}
-                                    className="rounded border-slate-700 text-emerald-500 bg-slate-950"
+                                    className="rounded border-slate-700 text-violet-500 bg-slate-950"
                                   />
                                   <span>HTTP</span>
                                 </label>
@@ -2293,7 +2293,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                     type="checkbox"
                                     checked={xraySniffingQuic}
                                     onChange={(e) => setXraySniffingQuic(e.target.checked)}
-                                    className="rounded border-slate-700 text-emerald-500 bg-slate-950"
+                                    className="rounded border-slate-700 text-violet-500 bg-slate-950"
                                   />
                                   <span>QUIC (HTTP/3)</span>
                                 </label>
@@ -2302,7 +2302,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                     type="checkbox"
                                     checked={xraySniffingFakedns}
                                     onChange={(e) => setXraySniffingFakedns(e.target.checked)}
-                                    className="rounded border-slate-700 text-emerald-500 bg-slate-950"
+                                    className="rounded border-slate-700 text-violet-500 bg-slate-950"
                                   />
                                   <span>FakeDNS</span>
                                 </label>
@@ -2314,7 +2314,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                   type="checkbox"
                                   checked={xrayRouteOnly}
                                   onChange={(e) => setXrayRouteOnly(e.target.checked)}
-                                  className="rounded border-slate-700 text-emerald-500 bg-slate-950 cursor-pointer"
+                                  className="rounded border-slate-700 text-violet-500 bg-slate-950 cursor-pointer"
                                 />
                               </div>
                             </div>
@@ -2346,7 +2346,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                 type="checkbox"
                                 checked={xrayBlockP2p}
                                 onChange={(e) => setXrayBlockP2p(e.target.checked)}
-                                className="rounded border-slate-700 text-emerald-500 bg-slate-950"
+                                className="rounded border-slate-700 text-violet-500 bg-slate-950"
                               />
                             </label>
 
@@ -2356,7 +2356,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                 type="checkbox"
                                 checked={xrayBlockAds}
                                 onChange={(e) => setXrayBlockAds(e.target.checked)}
-                                className="rounded border-slate-700 text-emerald-500 bg-slate-950"
+                                className="rounded border-slate-700 text-violet-500 bg-slate-950"
                               />
                             </label>
 
@@ -2366,7 +2366,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                 type="checkbox"
                                 checked={xrayBlockPrivateIp}
                                 onChange={(e) => setXrayBlockPrivateIp(e.target.checked)}
-                                className="rounded border-slate-700 text-emerald-500 bg-slate-950"
+                                className="rounded border-slate-700 text-violet-500 bg-slate-950"
                               />
                             </label>
 
@@ -2376,7 +2376,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                                 type="checkbox"
                                 checked={xrayPreferIpv4}
                                 onChange={(e) => setXrayPreferIpv4(e.target.checked)}
-                                className="rounded border-slate-700 text-emerald-500 bg-slate-950"
+                                className="rounded border-slate-700 text-violet-500 bg-slate-950"
                               />
                             </label>
                           </div>
@@ -2391,7 +2391,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                       id="bbr-chk"
                       checked={enableBbr}
                       onChange={(e) => setEnableBbr(e.target.checked)}
-                      className="rounded border-slate-700 text-emerald-500 focus:ring-emerald-500 bg-slate-950"
+                      className="rounded border-slate-700 text-violet-500 focus:ring-violet-500 bg-slate-950"
                     />
                     <label htmlFor="bbr-chk" className="text-slate-300 font-semibold cursor-pointer">
                       Включить ускорение TCP BBR в ядре Linux
@@ -2407,7 +2407,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                     </button>
                     <button
                       onClick={handleStartDeploy}
-                      className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl shadow-lg transition"
+                      className="px-5 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold rounded-xl shadow-lg transition"
                     >
                       Начать автоматический деплой
                     </button>
@@ -2418,12 +2418,12 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
               {/* Progress Terminal Logger */}
               {isDeploying && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                  <div className="flex items-center gap-2 text-violet-400 font-bold text-xs">
                     <RotateCw className="w-4 h-4 animate-spin" />
                     <span>Выполнение установки на SSH сервере...</span>
                   </div>
 
-                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 font-mono text-[11px] text-emerald-400 space-y-2 max-h-64 overflow-y-auto">
+                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 font-mono text-[11px] text-violet-400 space-y-2 max-h-64 overflow-y-auto">
                     {deployLogs.map((log, idx) => (
                       <div key={idx} className="leading-relaxed border-b border-slate-900/60 pb-1">
                         {log}
@@ -2436,9 +2436,9 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
               {/* Deployment Success & Generated Link */}
               {deploySuccessService && !isDeploying && (
                 <div className="space-y-4 text-xs">
-                  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 space-y-2 text-center">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto animate-bounce" />
-                    <h4 className="font-extrabold text-emerald-300 text-sm">
+                  <div className="bg-violet-500/10 border border-violet-500/30 rounded-2xl p-4 space-y-2 text-center">
+                    <CheckCircle2 className="w-8 h-8 text-violet-400 mx-auto animate-bounce" />
+                    <h4 className="font-extrabold text-violet-300 text-sm">
                       ВПН сервер успешно развернут и активен!
                     </h4>
                     <p className="text-[11px] text-slate-300">
@@ -2455,7 +2455,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                       <span className="font-semibold text-slate-300">Готовая клиентская ссылка:</span>
                       <button
                         onClick={() => handleCopyText(deploySuccessService.clientLink)}
-                        className="text-emerald-400 font-bold flex items-center gap-1"
+                        className="text-violet-400 font-bold flex items-center gap-1"
                       >
                         {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                         <span>{copiedLink ? "Скопировано!" : "Скопировать"}</span>
@@ -2476,7 +2476,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                         setDeploySuccessService(null);
                         setActiveTab("installed");
                       }}
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition text-center"
+                      className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl transition text-center"
                     >
                       Перейти к установленным ВПН
                     </button>
@@ -2494,12 +2494,12 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-[100] flex items-center justify-center p-3 sm:p-5 overflow-y-auto opacity-100 animate-in fade-in duration-300">
             <div className="relative bg-slate-900 border border-slate-700/80 rounded-[2rem] w-full max-w-sm p-6 space-y-6 shadow-[0_0_50px_rgba(0,0,0,0.5)] my-auto text-center transform animate-in zoom-in-95 duration-300">
               {/* Decorative glows */}
-              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
+              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-fuchsia-500/50 to-transparent" />
               
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <div className="p-2 bg-cyan-500/10 rounded-xl">
-                    <QrCode className="w-4 h-4 text-cyan-400" />
+                  <div className="p-2 bg-fuchsia-500/10 rounded-xl">
+                    <QrCode className="w-4 h-4 text-fuchsia-400" />
                   </div>
                   <span>Подключение</span>
                 </h3>
@@ -2522,14 +2522,14 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">UUID</span>
-                  <span className="text-emerald-400 font-mono text-[11px] truncate max-w-[150px]">{qrModalService.uuid}</span>
+                  <span className="text-violet-400 font-mono text-[11px] truncate max-w-[150px]">{qrModalService.uuid}</span>
                 </div>
               </div>
 
               <div className="pt-2">
                 <button
                   onClick={() => handleCopyText(qrModalService.clientLink)}
-                  className="w-full py-3.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs rounded-2xl transition-all shadow-[0_4px_20px_rgba(6,182,212,0.3)] active:scale-95 flex items-center justify-center gap-2"
+                  className="w-full py-3.5 bg-gradient-to-r from-fuchsia-600 to-blue-600 hover:from-fuchsia-500 hover:to-blue-500 text-white font-bold text-xs rounded-2xl transition-all shadow-[0_4px_20px_rgba(217,70,239,0.3)] active:scale-95 flex items-center justify-center gap-2"
                 >
                   {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   <span>{copiedLink ? "Скопировано!" : "Скопировать ключ доступа"}</span>

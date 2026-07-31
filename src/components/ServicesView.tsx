@@ -159,7 +159,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
               onClick={() => setFilterState("active")}
               className={`px-3 py-1.5 rounded-xl transition font-medium ${
                 filterState === "active"
-                  ? "bg-emerald-600 text-white"
+                  ? "bg-violet-600 text-white"
                   : "bg-slate-800 text-slate-300 hover:bg-slate-700"
               }`}
             >
@@ -186,7 +186,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
             placeholder="Поиск служб (nginx, docker, postgres, ssh)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 transition"
           />
         </div>
       </div>
@@ -208,7 +208,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
                     <span
                       className={`w-2.5 h-2.5 rounded-full ${
                         isActive
-                          ? "bg-emerald-400 animate-pulse"
+                          ? "bg-violet-400 animate-pulse"
                           : isFailed
                           ? "bg-rose-500"
                           : "bg-slate-500"
@@ -220,7 +220,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
                   <span
                     className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                       isActive
-                        ? "bg-emerald-950 text-emerald-400 border border-emerald-800/60"
+                        ? "bg-violet-950 text-violet-400 border border-violet-800/60"
                         : isFailed
                         ? "bg-rose-950 text-rose-400 border border-rose-800/60"
                         : "bg-slate-800 text-slate-400"
@@ -252,7 +252,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
                   ) : (
                     <button
                       onClick={() => handleServiceAction(srv, "start")}
-                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg border border-slate-700 transition"
+                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-violet-400 rounded-lg border border-slate-700 transition"
                       title="Запустить службу"
                     >
                       <Play className="w-3.5 h-3.5" />
@@ -261,7 +261,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
 
                   <button
                     onClick={() => handleServiceAction(srv, "restart")}
-                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded-lg border border-slate-700 transition"
+                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-fuchsia-400 rounded-lg border border-slate-700 transition"
                     title="Перезапустить службу"
                   >
                     <RotateCw className="w-3.5 h-3.5" />
@@ -307,7 +307,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
                 </button>
               </div>
 
-              <div className="flex-1 bg-slate-950 p-3 sm:p-4 font-mono text-[11px] sm:text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+              <div className="flex-1 bg-slate-950 p-3 sm:p-4 font-mono text-[11px] sm:text-xs text-violet-400 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                 {isLoadingLogs ? "Загрузка логов по SSH..." : journalLogs}
               </div>
             </div>
