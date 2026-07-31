@@ -28,6 +28,7 @@ import {
   Sparkles,
   ExternalLink,
   ChevronRight,
+  ChevronDown,
   Download,
   FileText,
   X,
@@ -638,6 +639,81 @@ export const validateAnytlsPaddingScheme = (raw: string): string[] => {
   return issues;
 };
 
+// ============================================================================================
+// VLESS REALITY -- full inbound (server-side) parameter set, per the official spec:
+// xtls.github.io/en/config/transports/reality.html
+//
+// Prior implementation only wired 4 of the ~11 real inbound fields (dest/target, xver=0
+// hardcoded, a single serverNames entry, privateKey, a single shortIds entry) -- and it also
+// had a real bug: it stuffed `fingerprint` into the SERVER's realitySettings. Per the docs,
+// `fingerprint` is explicitly an OUTBOUND/client-only field ("the following fields are for
+// outbound (client-side) configuration") -- it has no effect server-side and doesn't belong
+// there (the client link already correctly carries fp= for the client). Fixed by removing it
+// from the inbound JSON entirely -- the client link generation was already correct and is
+// untouched.
+//
+// Newly wired real fields: minClientVer/maxClientVer (client version gating), maxTimeDiff
+// (replay/clock-skew tolerance), multiple serverNames + shortIds (docs: "can be used to
+// distinguish different clients"), mldsa65Seed (post-quantum certificate signature, added
+// to Xray-core's REALITY implementation for future-proofing against quantum attacks on
+// X25519), and limitFallbackUpload/limitFallbackDownload (anti-scan rate limiting for
+// unauthenticated fallback traffic -- off by default per the docs' own warning that, if
+// misconfigured, the rate-limit shape itself becomes a fingerprint).
+// ============================================================================================
+
+export const validateRealityParams = (params: {
+  serverNames: string[];
+  shortIds: string[];
+  minClientVer: string;
+  maxClientVer: string;
+  maxTimeDiff: string;
+  fallbackLimitEnabled: boolean;
+  fallbackAfterBytes: string;
+  fallbackBytesPerSec: string;
+  fallbackBurstBytesPerSec: string;
+}): string[] => {
+  const issues: string[] = [];
+  const { serverNames, shortIds, minClientVer, maxClientVer, maxTimeDiff, fallbackLimitEnabled, fallbackAfterBytes, fallbackBytesPerSec, fallbackBurstBytesPerSec } = params;
+
+  if (serverNames.length === 0) {
+    issues.push("Список serverNames пуст -- нужен хотя бы один домен (обычно совпадающий с target/dest).");
+  }
+  serverNames.forEach((name) => {
+    if (name.includes("*")) issues.push(`serverNames: "${name}" -- wildcard-домены (*) не поддерживаются REALITY.`);
+  });
+
+  if (shortIds.length === 0) {
+    issues.push("Список shortIds пуст -- требуется хотя бы одно значение (может быть пустой строкой).");
+  }
+  shortIds.forEach((sid) => {
+    if (sid === "") return; // an empty shortId is explicitly valid per the spec
+    if (!/^[0-9a-fA-F]+$/.test(sid)) issues.push(`shortIds: "${sid}" -- допустимы только hex-символы (0-9, a-f).`);
+    else if (sid.length > 16) issues.push(`shortIds: "${sid}" -- максимум 16 hex-символов (8 байт).`);
+    else if (sid.length % 2 !== 0) issues.push(`shortIds: "${sid}" -- число символов должно быть чётным (1 байт = 2 hex-символа).`);
+  });
+
+  const verRegex = /^\d+\.\d+\.\d+$/;
+  if (minClientVer.trim() && !verRegex.test(minClientVer.trim())) {
+    issues.push(`minClientVer: "${minClientVer}" -- формат должен быть x.y.z (например 25.9.11).`);
+  }
+  if (maxClientVer.trim() && !verRegex.test(maxClientVer.trim())) {
+    issues.push(`maxClientVer: "${maxClientVer}" -- формат должен быть x.y.z (например 25.9.11).`);
+  }
+  if (maxTimeDiff.trim() && (!/^\d+$/.test(maxTimeDiff.trim()))) {
+    issues.push(`maxTimeDiff: "${maxTimeDiff}" -- должно быть целым числом миллисекунд.`);
+  }
+
+  if (fallbackLimitEnabled) {
+    [["afterBytes", fallbackAfterBytes], ["bytesPerSec", fallbackBytesPerSec], ["burstBytesPerSec", fallbackBurstBytesPerSec]].forEach(([label, val]) => {
+      if (val.trim() && !/^\d+$/.test(val.trim())) {
+        issues.push(`Fallback rate-limit ${label}: "${val}" -- должно быть целым неотрицательным числом.`);
+      }
+    });
+  }
+
+  return issues;
+};
+
 // Shadowsocks-2022 in Xray-core was audited previously and found unstable in true
 // multi-user mode across all supported ciphers -- kept intentionally single-user. See
 // VPNClientEntry doc comment in types.ts.
@@ -716,6 +792,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   const [anytlsTlsVersion, setAnytlsTlsVersion] = useState<"auto" | "1.2" | "1.3">("auto");
   const anytlsPaddingIssues = anytlsPaddingMode === "custom" ? validateAnytlsPaddingScheme(anytlsPaddingScheme) : [];
 
+
   // 3X-UI Full Xray Panel Fine-Tuning Parameters
   const [xrayTransport, setXrayTransport] = useState<"grpc" | "tcp" | "ws" | "http" | "quic">("grpc");
   const [xraySecurity, setXraySecurity] = useState<"reality" | "tls" | "none">("reality");
@@ -724,6 +801,39 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   const [xrayShortId, setXrayShortId] = useState<string>("6ba7b810");
   const [xrayPrivateKey, setXrayPrivateKey] = useState<string>("x8F2k9L1mN3pQ5rT7vW9xZ2aC4eG6iI8kM0oQ2sU4wY");
   const [xrayPublicKey, setXrayPublicKey] = useState<string>("p1K9mL2nQ4rT6vW8xZ0aC3eG5iH7kJ9mL1oP3sU5wX0");
+
+  // REALITY advanced (server-side inbound) tunables -- see validateRealityParams above for
+  // why each of these exists. Kept separate from the primary deploySni/xrayShortId fields
+  // used elsewhere (client link, cert CN, other protocols' TLS server_name) so this stays
+  // purely additive -- primary values are always merged in as the first list entry.
+  const [xrayExtraServerNames, setXrayExtraServerNames] = useState<string>("");
+  const [xrayExtraShortIds, setXrayExtraShortIds] = useState<string>("");
+  const [xrayMinClientVer, setXrayMinClientVer] = useState<string>("");
+  const [xrayMaxClientVer, setXrayMaxClientVer] = useState<string>("");
+  const [xrayMaxTimeDiff, setXrayMaxTimeDiff] = useState<string>("");
+  const [xrayMldsa65Seed, setXrayMldsa65Seed] = useState<string>("");
+  const [xrayFallbackLimitEnabled, setXrayFallbackLimitEnabled] = useState<boolean>(false);
+  const [xrayFallbackAfterBytes, setXrayFallbackAfterBytes] = useState<string>("10485760");
+  const [xrayFallbackBytesPerSec, setXrayFallbackBytesPerSec] = useState<string>("1048576");
+  const [xrayFallbackBurstBytesPerSec, setXrayFallbackBurstBytesPerSec] = useState<string>("5242880");
+  const [xrayRealityAdvancedOpen, setXrayRealityAdvancedOpen] = useState<boolean>(false);
+
+  // Primary value (deploySni / xrayShortId) always first, matching the single-value client
+  // link which always references those primary fields; extras are additional/optional.
+  // Dedupe while keeping the primary's position stable at index 0.
+  const realityServerNamesList = Array.from(new Set([deploySni.trim(), ...xrayExtraServerNames.split(",").map((s) => s.trim()).filter(Boolean)]));
+  const realityShortIdsList = Array.from(new Set([xrayShortId.trim(), ...xrayExtraShortIds.split(",").map((s) => s.trim()).filter(Boolean)]));
+  const realityIssues = xraySecurity === "reality" ? validateRealityParams({
+    serverNames: realityServerNamesList,
+    shortIds: realityShortIdsList,
+    minClientVer: xrayMinClientVer,
+    maxClientVer: xrayMaxClientVer,
+    maxTimeDiff: xrayMaxTimeDiff,
+    fallbackLimitEnabled: xrayFallbackLimitEnabled,
+    fallbackAfterBytes: xrayFallbackAfterBytes,
+    fallbackBytesPerSec: xrayFallbackBytesPerSec,
+    fallbackBurstBytesPerSec: xrayFallbackBurstBytesPerSec,
+  }) : [];
   const [xrayAlpn, setXrayAlpn] = useState<string>("h2,http/1.1");
   const [xrayGrpcServiceName, setXrayGrpcServiceName] = useState<string>("grpc-vless");
   const [xrayGrpcMultiMode, setXrayGrpcMultiMode] = useState<boolean>(false);
@@ -982,6 +1092,11 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
       return;
     }
 
+    if (xraySecurity === "reality" && realityIssues.length > 0) {
+      toast.error("Некорректные параметры REALITY", realityIssues[0]);
+      return;
+    }
+
     // Generate credentials
     const newUuid = window.crypto?.randomUUID ? window.crypto.randomUUID() : "a" + Math.random().toString(36).substring(2, 10) + "-4f12-9012-" + Math.random().toString(36).substring(2, 12);
     let newPub = "pbk_" + Math.random().toString(36).substring(2, 15);
@@ -1231,12 +1346,34 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
             show: false,
             dest: xrayDest || `${deploySni}:443`,
             xver: 0,
-            serverNames: [deploySni],
+            // Multiple serverNames/shortIds now genuinely wired (primary value first,
+            // matching the client link's single-value fp/sid, plus any extras from the
+            // advanced panel) -- previously always hardcoded to a single-element array.
+            serverNames: realityServerNamesList.length > 0 ? realityServerNamesList : [deploySni],
             // Real server-generated key, obtained by the "keygen" step above -- no more
             // placeholder + sed-patch dance.
             privateKey: realityServerPriv || "MISSING_REALITY_KEY",
-            shortIds: [xrayShortId || "6ba7b810"],
-            fingerprint: utlsFingerprint
+            shortIds: realityShortIdsList.length > 0 ? realityShortIdsList : [xrayShortId || "6ba7b810"],
+            // NOTE: `fingerprint` was previously (incorrectly) set here. Per the official
+            // docs (xtls.github.io/en/config/transports/reality.html), fingerprint is
+            // explicitly an OUTBOUND/client-only field and has no effect in the inbound
+            // (server) config -- removed. The client link already carries fp= correctly.
+            ...(xrayMinClientVer.trim() ? { minClientVer: xrayMinClientVer.trim() } : {}),
+            ...(xrayMaxClientVer.trim() ? { maxClientVer: xrayMaxClientVer.trim() } : {}),
+            ...(xrayMaxTimeDiff.trim() ? { maxTimeDiff: parseInt(xrayMaxTimeDiff.trim(), 10) } : {}),
+            ...(xrayMldsa65Seed.trim() ? { mldsa65Seed: xrayMldsa65Seed.trim() } : {}),
+            ...(xrayFallbackLimitEnabled ? {
+              limitFallbackUpload: {
+                afterBytes: parseInt(xrayFallbackAfterBytes.trim() || "0", 10),
+                bytesPerSec: parseInt(xrayFallbackBytesPerSec.trim() || "0", 10),
+                burstBytesPerSec: parseInt(xrayFallbackBurstBytesPerSec.trim() || "0", 10)
+              },
+              limitFallbackDownload: {
+                afterBytes: parseInt(xrayFallbackAfterBytes.trim() || "0", 10),
+                bytesPerSec: parseInt(xrayFallbackBytesPerSec.trim() || "0", 10),
+                burstBytesPerSec: parseInt(xrayFallbackBurstBytesPerSec.trim() || "0", 10)
+              }
+            } : {})
           };
         } else if (xraySecurity === "tls") {
           streamSettings.tlsSettings = {
@@ -3569,6 +3706,145 @@ sudo cp /tmp/awg_new_conf_${backupTs}.conf "${p}"
                                   />
                                 </div>
                               </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setXrayRealityAdvancedOpen((v) => !v)}
+                                className="w-full flex items-center justify-between text-[10px] text-violet-400 font-semibold pt-1 border-t border-slate-800 mt-1"
+                              >
+                                <span>Расширенные параметры REALITY (multi-SNI, версии клиента, PQ-подпись, anti-scan)</span>
+                                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${xrayRealityAdvancedOpen ? "rotate-180" : ""}`} />
+                              </button>
+
+                              {xrayRealityAdvancedOpen && (
+                                <div className="space-y-2 pt-1">
+                                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                    <div>
+                                      <label className="text-slate-400 block mb-0.5">Доп. Server Names (через запятую)</label>
+                                      <input
+                                        type="text"
+                                        value={xrayExtraServerNames}
+                                        onChange={(e) => setXrayExtraServerNames(e.target.value)}
+                                        placeholder="www.google.com, encrypted-tbn0.gstatic.com"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-slate-400 block mb-0.5">Доп. Short IDs (через запятую)</label>
+                                      <input
+                                        type="text"
+                                        value={xrayExtraShortIds}
+                                        onChange={(e) => setXrayExtraShortIds(e.target.value)}
+                                        placeholder="ab12, cd34ef56"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-3 gap-2 text-[10px]">
+                                    <div>
+                                      <label className="text-slate-400 block mb-0.5">Min Client Ver</label>
+                                      <input
+                                        type="text"
+                                        value={xrayMinClientVer}
+                                        onChange={(e) => setXrayMinClientVer(e.target.value)}
+                                        placeholder="x.y.z"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-slate-400 block mb-0.5">Max Client Ver</label>
+                                      <input
+                                        type="text"
+                                        value={xrayMaxClientVer}
+                                        onChange={(e) => setXrayMaxClientVer(e.target.value)}
+                                        placeholder="x.y.z"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-slate-400 block mb-0.5">Max Time Diff (мс)</label>
+                                      <input
+                                        type="text"
+                                        value={xrayMaxTimeDiff}
+                                        onChange={(e) => setXrayMaxTimeDiff(e.target.value)}
+                                        placeholder="0"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="text-slate-400 block mb-0.5 text-[10px]">ML-DSA-65 Seed (пост-квантовая подпись сертификата, необязательно)</label>
+                                    <input
+                                      type="text"
+                                      value={xrayMldsa65Seed}
+                                      onChange={(e) => setXrayMldsa65Seed(e.target.value)}
+                                      placeholder="оставь пустым, чтобы отключить -- сгенерировать: xray mldsa65"
+                                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono text-[10px]"
+                                    />
+                                    <p className="text-[9px] text-slate-500 mt-0.5">Важно: после включения target-сертификат должен быть больше 3500 байт (иначе сама подпись станет фингерпринтом). Проверка: xray tls ping &lt;target&gt;.</p>
+                                  </div>
+
+                                  <div className="bg-slate-950/80 border border-amber-500/20 rounded-lg p-2 space-y-1.5">
+                                    <label className="flex items-center gap-2 text-[10px] text-amber-300 font-semibold cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={xrayFallbackLimitEnabled}
+                                        onChange={(e) => setXrayFallbackLimitEnabled(e.target.checked)}
+                                        className="accent-amber-500"
+                                      />
+                                      <span>Ограничить скорость fallback-соединений (anti-scan)</span>
+                                    </label>
+                                    <p className="text-[9px] text-slate-500">
+                                      Официальная документация REALITY прямо предупреждает: само ограничение скорости -- тоже фингерпринт, и в большинстве случаев эта опция не нужна (лучше использовать сертификат из того же ASN, что и target). Включай только если осознанно занимаешь чужой /free CDN-домен как target.
+                                    </p>
+                                    {xrayFallbackLimitEnabled && (
+                                      <div className="grid grid-cols-3 gap-2 text-[10px] pt-1">
+                                        <div>
+                                          <label className="text-slate-400 block mb-0.5">After Bytes</label>
+                                          <input
+                                            type="text"
+                                            value={xrayFallbackAfterBytes}
+                                            onChange={(e) => setXrayFallbackAfterBytes(e.target.value)}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="text-slate-400 block mb-0.5">Bytes/Sec</label>
+                                          <input
+                                            type="text"
+                                            value={xrayFallbackBytesPerSec}
+                                            onChange={(e) => setXrayFallbackBytesPerSec(e.target.value)}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="text-slate-400 block mb-0.5">Burst Bytes/Sec</label>
+                                          <input
+                                            type="text"
+                                            value={xrayFallbackBurstBytesPerSec}
+                                            onChange={(e) => setXrayFallbackBurstBytesPerSec(e.target.value)}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {realityIssues.length > 0 && (
+                                    <div className="bg-rose-950/40 border border-rose-500/40 rounded-xl p-2.5 space-y-1">
+                                      <div className="flex items-center gap-1.5 text-rose-300 text-[10px] font-bold">
+                                        <AlertTriangle className="w-3.5 h-3.5" />
+                                        <span>Некорректные параметры REALITY -- деплой заблокирован:</span>
+                                      </div>
+                                      {realityIssues.map((issue, i) => (
+                                        <div key={i} className="text-[10px] text-rose-300/90 pl-5">-- {issue}</div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
 
