@@ -254,9 +254,6 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
   const [xrayRouteOnly, setXrayRouteOnly] = useState<boolean>(true);
 
   // 3X-UI Client Quotas & Expiry Limits
-  const [xrayTotalGb, setXrayTotalGb] = useState<number>(0);
-  const [xrayExpiryDays, setXrayExpiryDays] = useState<number>(0);
-  const [xrayIpLimit, setXrayIpLimit] = useState<number>(0);
 
   // 3X-UI Routing & Outbound Rules
   const [xrayDomainStrategy, setXrayDomainStrategy] = useState<"IPIfNonMatch" | "UseIPv4" | "UseIPv6" | "AsIs">("IPIfNonMatch");
@@ -372,7 +369,49 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     const isSs2022 = selectedDeployProtocol.id === "shadowsocks-2022";
     const ss2022Bytes = xraySsCipher.includes("128") ? 16 : 32;
     const ss2022Password = isSs2022 ? generateBase64Key(ss2022Bytes) : newUuid;
-    const awgPrivateKey = selectedDeployProtocol.id === "amnezia-wg" ? generateBase64Key(32) : newUuid;
+
+    // AmneziaWG 2.0 adds S3 (Cookie prefix, 0-64 bytes) and S4 (Data prefix, 0-32 bytes)
+    // on top of 1.0's Jc/Jmin/Jmax/S1/S2/H1-H4. Selecting "1.0" genuinely omits them
+    // (defaults to 0 = no extra obfuscation on those packet types) instead of the
+    // version toggle being purely cosmetic.
+    const awgS3 = awgVersion === "2.0" ? 16 : 0;
+    const awgS4 = awgVersion === "2.0" ? 8 : 0;
+    // AmneziaWG/WireGuard is a mutual-auth protocol: both server and client need a real
+    // X25519 keypair, and each side needs the OTHER side's public key ahead of time (it's
+    // not a bearer-token/UUID scheme like Xray). The real keypairs are generated on the
+    // server itself via `awg genkey`/`awg pubkey` during SSH deploy (see bashScript below)
+    // and the placeholder here is ONLY ever shown for the demo server, which never deploys.
+    const awgDemoClientPriv = generateBase64Key(32);
+    const awgDemoServerPub = generateBase64Key(32);
+    const buildAwgClientConf = (clientPriv: string, serverPub: string) => {
+      const lines = [
+        "[Interface]",
+        `PrivateKey = ${clientPriv}`,
+        "Address = 10.29.29.2/32",
+        "DNS = 1.1.1.1, 1.0.0.1",
+        `Jc = ${awgJc}`,
+        `Jmin = ${awgJmin}`,
+        `Jmax = ${awgJmax}`,
+        `S1 = ${awgS1}`,
+        `S2 = ${awgS2}`,
+      ];
+      if (awgVersion === "2.0") {
+        lines.push(`S3 = ${awgS3}`, `S4 = ${awgS4}`);
+      }
+      lines.push(
+        `H1 = ${awgH1}`,
+        `H2 = ${awgH2}`,
+        `H3 = ${awgH3}`,
+        `H4 = ${awgH4}`,
+        "",
+        "[Peer]",
+        `PublicKey = ${serverPub}`,
+        `Endpoint = ${safeHost}:${deployPort}`,
+        "AllowedIPs = 0.0.0.0/0, ::/0",
+        "PersistentKeepalive = 25"
+      );
+      return lines.join("\n");
+    };
 
     setIsDeploying(true);
     setDeployLogs([`[SSH] Подключение к серверу ${server.username}@${server.host}:${server.port}...`]);
@@ -411,7 +450,11 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
     if (selectedDeployProtocol.id === "anytls") {
       link = `anytls://${newUuid}@${safeHost}:${deployPort}?sni=${deploySni}&insecure=1#${encName(`${server.name}-AnyTLS-sing-box`)}`;
     } else if (selectedDeployProtocol.id === "amnezia-wg") {
-      link = `awg://${btoa(JSON.stringify({ v: awgVersion, host: safeHost, port: deployPort, uuid: awgPrivateKey, jc: awgJc, jmin: awgJmin, jmax: awgJmax, s1: awgS1, s2: awgS2, h1: awgH1, h2: awgH2, h3: awgH3, h4: awgH4 }))}#${encName(`${server.name}-AmneziaWG-v${awgVersion}`)}`;
+      // Real clients (native AmneziaWG app, wg-quick, etc.) import a plain WireGuard-style
+      // .conf file or a QR code of that same text -- there is no "awg://" URI scheme. This
+      // placeholder (demo-key based) gets fully replaced with the real server-generated
+      // keys once the real SSH deploy below reports back the actual keypairs.
+      link = buildAwgClientConf(awgDemoClientPriv, awgDemoServerPub);
     } else if (selectedDeployProtocol.id === "shadowsocks-2022") {
       link = `ss://${btoa(xraySsCipher + ":" + ss2022Password)}@${safeHost}:${deployPort}#${encName(`${server.name}-${deployClientName}`)}`;
     } else if (selectedDeployProtocol.id === "xray-vmess-ws") {
@@ -477,26 +520,14 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
             ]
           }, null, 2);
         } else if (selectedDeployProtocol.id === "amnezia-wg") {
-          configJson = JSON.stringify({
-            Interface: {
-              Address: "10.8.0.1/24",
-              ListenPort: deployPort,
-              PrivateKey: awgPrivateKey,
-              ProtocolVersion: awgVersion,
-              Jc: awgJc,
-              Jmin: awgJmin,
-              Jmax: awgJmax,
-              S1: awgS1,
-              S2: awgS2,
-              H1: awgH1,
-              H2: awgH2,
-              H3: awgH3,
-              H4: awgH4
-            }
-          }, null, 2);
+          // AmneziaWG's real config is plain WireGuard-style INI, not JSON, and it needs a
+          // genuine server keypair plus a [Peer] block for the client -- none of which can
+          // be known before the server generates its own keys. So instead of pre-building
+          // configJson here, the whole awg0.conf gets written inline further down in the
+          // AmneziaWG install block of bashScript, right after `awg genkey` runs on the box.
+          configJson = "";
         } else {
-          // Full 3X-UI Xray Configuration Engine
-          const expiryMs = xrayExpiryDays > 0 ? Date.now() + xrayExpiryDays * 24 * 60 * 60 * 1000 : 0;
+          // Full Xray Configuration Engine
 
           const destOverride: string[] = [];
           if (xraySniffingHttp) destOverride.push("http");
@@ -516,10 +547,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
                 {
                   id: newUuid,
                   flow: actualFlow !== "none" ? actualFlow : undefined,
-                  email: `${deployClientName}@3x-ui`,
-                  limitIp: xrayIpLimit > 0 ? xrayIpLimit : 0,
-                  totalGb: xrayTotalGb > 0 ? xrayTotalGb : 0,
-                  expiryTime: expiryMs
+                  email: `${deployClientName}@xray`
                 }
               ],
               decryption: "none"
@@ -530,10 +558,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
                 {
                   id: newUuid,
                   alterId: 0,
-                  email: `${deployClientName}@3x-ui`,
-                  limitIp: xrayIpLimit > 0 ? xrayIpLimit : 0,
-                  totalGb: xrayTotalGb > 0 ? xrayTotalGb : 0,
-                  expiryTime: expiryMs
+                  email: `${deployClientName}@xray`
                 }
               ]
             };
@@ -542,10 +567,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
               clients: [
                 {
                   password: newUuid,
-                  email: `${deployClientName}@3x-ui`,
-                  limitIp: xrayIpLimit > 0 ? xrayIpLimit : 0,
-                  totalGb: xrayTotalGb > 0 ? xrayTotalGb : 0,
-                  expiryTime: expiryMs
+                  email: `${deployClientName}@xray`
                 }
               ]
             };
@@ -557,7 +579,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
             inboundSettings = {
               method: xraySsCipher,
               password: ss2022Password,
-              email: `${deployClientName}@3x-ui`,
+              email: `${deployClientName}@xray`,
               network: "tcp,udp"
             };
           }
@@ -803,14 +825,63 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
             fi
           fi
           sudo mkdir -p /etc/amnezia/amneziawg /etc/wireguard
+
+          # Generate REAL X25519 keypairs for both ends -- AmneziaWG/WireGuard is mutual-auth,
+          # so the server needs its own key plus the client's PUBLIC key registered as a Peer,
+          # and the client config needs the SERVER's public key. Neither side can be faked.
+          AWG_BIN=$(command -v awg || command -v wg || echo "/usr/bin/awg")
+          AWG_SERVER_PRIV=$($AWG_BIN genkey 2>/dev/null)
+          AWG_SERVER_PUB=$(echo "$AWG_SERVER_PRIV" | $AWG_BIN pubkey 2>/dev/null)
+          AWG_CLIENT_PRIV=$($AWG_BIN genkey 2>/dev/null)
+          AWG_CLIENT_PUB=$(echo "$AWG_CLIENT_PRIV" | $AWG_BIN pubkey 2>/dev/null)
+
+          AWG_EGRESS_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+          [ -z "$AWG_EGRESS_IFACE" ] && AWG_EGRESS_IFACE="eth0"
+
+          if [ -n "$AWG_SERVER_PRIV" ] && [ -n "$AWG_SERVER_PUB" ] && [ -n "$AWG_CLIENT_PUB" ]; then
+            AWG_CONF="[Interface]
+Address = 10.29.29.1/24
+ListenPort = ${deployPort}
+PrivateKey = $AWG_SERVER_PRIV
+Jc = ${awgJc}
+Jmin = ${awgJmin}
+Jmax = ${awgJmax}
+S1 = ${awgS1}
+S2 = ${awgS2}
+${awgVersion === "2.0" ? `S3 = ${awgS3}
+S4 = ${awgS4}` : ""}
+H1 = ${awgH1}
+H2 = ${awgH2}
+H3 = ${awgH3}
+H4 = ${awgH4}
+PostUp = iptables -A FORWARD -i awg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o $AWG_EGRESS_IFACE -j MASQUERADE
+PostDown = iptables -D FORWARD -i awg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o $AWG_EGRESS_IFACE -j MASQUERADE
+
+[Peer]
+PublicKey = $AWG_CLIENT_PUB
+AllowedIPs = 10.29.29.2/32"
+            # Written to both known search paths since packaging differs between the PPA
+            # build and the prebuilt-binary fallback path used above.
+            echo "$AWG_CONF" | sudo tee /etc/amnezia/amneziawg/awg0.conf > /dev/null
+            echo "$AWG_CONF" | sudo tee /etc/wireguard/awg0.conf > /dev/null
+            sudo chmod 600 /etc/amnezia/amneziawg/awg0.conf /etc/wireguard/awg0.conf 2>/dev/null || true
+            echo "AWG_SERVER_PUB:$AWG_SERVER_PUB"
+            echo "AWG_CLIENT_PRIV:$AWG_CLIENT_PRIV"
+          else
+            echo "[AWG] ERROR: key generation failed (awg/wg binary not found or not working) -- cannot write a valid config."
+          fi
           ` : ""}
 
-          # Write protocol configuration
+          # Write protocol configuration (AmneziaWG writes its own config above -- it's
+          # real WireGuard-style INI generated only after server keys exist, not this
+          # generic JSON writer)
+          ${selectedDeployProtocol.id !== "amnezia-wg" ? `
           sudo mkdir -p ${configPathPrefix}/${serviceDir}
           echo '${configJson}' | sudo tee ${configPathPrefix}/${serviceDir}/${configFile} > /dev/null
           if [ "${serviceDir}" = "xray" ]; then
             echo '${configJson}' | sudo tee /etc/xray/config.json > /dev/null 2>&1 || true
           fi
+          ` : ""}
           
           ${selectedDeployProtocol.id === "xray-vless-reality" ? `
           # Generate valid REALITY keypair on the server
@@ -863,6 +934,21 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
           const match = res.stdout.match(/XRAY_REALITY_PUB:([a-zA-Z0-9_-]+)/);
           if (match && match[1]) {
             link = link.replace(/pbk=[^&#]+/, `pbk=${match[1]}`);
+          }
+        }
+
+        if (selectedDeployProtocol.id === "amnezia-wg") {
+          const pubMatch = res.stdout?.match(/AWG_SERVER_PUB:(\S+)/);
+          const privMatch = res.stdout?.match(/AWG_CLIENT_PRIV:(\S+)/);
+          if (pubMatch?.[1] && privMatch?.[1]) {
+            // Rebuild the client .conf from scratch with the real server-generated keys --
+            // the placeholder built earlier used non-matching demo keys that could never work.
+            link = buildAwgClientConf(privMatch[1], pubMatch[1]);
+          } else {
+            setIsDeploying(false);
+            setDeployLogs((prev) => [...prev, `[ERROR] Не удалось получить ключи AmneziaWG с сервера -- служба поднялась, но конфиг клиента невозможно собрать корректно.`]);
+            toast.error(`Деплой не удался: сервер не вернул сгенерированные ключи AmneziaWG.`);
+            return;
           }
         }
       } catch (err: any) {
@@ -1819,7 +1905,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                               : "text-slate-400 hover:text-white"
                           }`}
                         >
-                          👤 Лимиты
+                          👤 Клиент
                         </button>
                         <button
                           type="button"
@@ -2097,7 +2183,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                         </div>
                       )}
 
-                      {/* SUB-TAB 2: CLIENT LIMITS & QUOTAS */}
+                      {/* SUB-TAB 2: CLIENT IDENTIFIER */}
                       {xrayPanelSubTab === "limits" && (
                         <div className="space-y-3 text-[11px]">
                           <div>
@@ -2108,51 +2194,10 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/awg-quick@.service > 
                               onChange={(e) => setDeployClientName(e.target.value)}
                               className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono text-[11px]"
                             />
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-2 text-[10px]">
-                            <div>
-                              <label className="text-slate-400 block mb-0.5 font-semibold">Лимит трафика (GB)</label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={xrayTotalGb}
-                                onChange={(e) => setXrayTotalGb(Number(e.target.value))}
-                                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
-                              />
-                              <span className="text-[9px] text-slate-500">0 = Безлимит</span>
-                            </div>
-
-                            <div>
-                              <label className="text-slate-400 block mb-0.5 font-semibold">Срок действия (Дни)</label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={xrayExpiryDays}
-                                onChange={(e) => setXrayExpiryDays(Number(e.target.value))}
-                                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
-                              />
-                              <span className="text-[9px] text-slate-500">0 = Бессрочно</span>
-                            </div>
-
-                            <div>
-                              <label className="text-slate-400 block mb-0.5 font-semibold">Лимит IP подключений</label>
-                              <input
-                                type="number"
-                                min={0}
-                                max={10}
-                                value={xrayIpLimit}
-                                onChange={(e) => setXrayIpLimit(Number(e.target.value))}
-                                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono"
-                              />
-                              <span className="text-[9px] text-slate-500">0 = Без ограничений</span>
-                            </div>
-                          </div>
-
-                          <div className="bg-amber-950/40 border border-amber-800/50 rounded-xl p-2.5 text-[10px] text-amber-300 leading-relaxed">
-                            ⚠️ Эти лимиты пишутся в конфиг, но <strong>не применяются</strong> ванильным Xray-core (устанавливается официальным install-release.sh) —
-                            он их просто игнорирует. Реальный учёт трафика/срока/IP требует панели 3X-UI с собственным API-демоном,
-                            либо отдельного сервиса на этом сервере, который читает статистику Xray и сам отключает клиента. Сейчас это не реализовано.
+                            <span className="text-[10px] text-slate-500 block mt-1">
+                              Используется как email/tag клиента в конфиге. Лимиты трафика/срока/IP убраны --
+                              ванильный Xray-core их не поддерживает без отдельной панели со своим API-демоном (3X-UI).
+                            </span>
                           </div>
                         </div>
                       )}
