@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { SSHConfig } from "../types";
 import { execCommand } from "../services/api";
@@ -21,6 +21,7 @@ import {
   Trash2,
   LogOut,
   Package,
+  Loader2,
 } from "lucide-react";
 
 interface HeaderProps {
@@ -99,6 +100,54 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
   const [showQuickActionModal, setShowQuickActionModal] = useState(false);
+
+  // Quick Actions only makes sense to offer for software that's actually present on the
+  // target server -- e.g. offering "Restart Nginx" on a box that never had Nginx installed
+  // is misleading busywork that'll just fail. We detect real installed state per-server
+  // (same `command -v` probing convention already used in VPNView/ToolsView) instead of
+  // assuming every server looks like a fully-loaded LAMP/Docker box.
+  const DEMO_TOOL_STATUS = { nginx: true, docker: true, ufw: true };
+  const [toolStatus, setToolStatus] = useState<{ nginx: boolean; docker: boolean; ufw: boolean } | null>(null);
+  const [checkingTools, setCheckingTools] = useState(false);
+
+  const detectInstalledTools = async () => {
+    // The demo server is simulated, not a real reachable host -- `command -v` there would
+    // just hit the generic demo fallback and look unrealistic. Its simulated environment
+    // already "has" nginx/docker/ufw (see the demo systemctl status output), so mirror that
+    // directly instead of round-tripping a probe that can't reflect anything real anyway.
+    if (currentServer.isDemo) {
+      setToolStatus(DEMO_TOOL_STATUS);
+      return;
+    }
+    setCheckingTools(true);
+    setToolStatus(null);
+    try {
+      const probe = [
+        'command -v nginx >/dev/null 2>&1 && echo "NGINX:yes" || echo "NGINX:no"',
+        'command -v docker >/dev/null 2>&1 && echo "DOCKER:yes" || echo "DOCKER:no"',
+        'command -v ufw >/dev/null 2>&1 && echo "UFW:yes" || echo "UFW:no"',
+      ].join("\n");
+      const res = await execCommand(currentServer, probe);
+      const out = res.stdout || "";
+      setToolStatus({
+        nginx: /NGINX:yes/.test(out),
+        docker: /DOCKER:yes/.test(out),
+        ufw: /UFW:yes/.test(out),
+      });
+    } catch (e) {
+      // Fail closed: if we can't even confirm what's installed, don't offer to manage it --
+      // showing "Restart Nginx" based on a guess is worse than not showing it at all.
+      setToolStatus({ nginx: false, docker: false, ufw: false });
+      toast.error("Проверка ПО", "Не удалось проверить установленные пакеты на сервере");
+    } finally {
+      setCheckingTools(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showQuickActionModal) detectInstalledTools();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showQuickActionModal, currentServer.id]);
 
   return (
     <header className="bg-[#0b0f17]/90 backdrop-blur-xl border-b border-white/10 text-slate-200 sticky top-0 z-30 shadow-2xl">
@@ -343,21 +392,38 @@ export const Header: React.FC<HeaderProps> = ({
                 <strong className="text-white font-mono">{currentServer.name}</strong> ({currentServer.host}).
               </p>
 
+              {checkingTools && (
+                <div className="flex items-center gap-2 text-xs text-slate-400 py-1">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Проверяем установленное ПО на сервере...
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <button
-                  onClick={() => {
-                    runQuickAction("Перезапустить Nginx", "sudo systemctl restart nginx");
-                  }}
-                  className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
-                >
-                  <div className="text-xs font-bold text-fuchsia-400 flex items-center gap-1.5">
-                    <RefreshCw className="w-4 h-4 shrink-0" />
-                    Перезапустить Nginx
-                  </div>
-                  <div className="text-[11px] text-slate-400 leading-normal">
-                    Сброс конфигураций и веток подключения веб-сервера
-                  </div>
-                </button>
+                {checkingTools && (
+                  <>
+                    <div className="p-3.5 bg-slate-900/50 border border-white/5 rounded-2xl h-[68px] animate-pulse" />
+                    <div className="p-3.5 bg-slate-900/50 border border-white/5 rounded-2xl h-[68px] animate-pulse" />
+                    <div className="p-3.5 bg-slate-900/50 border border-white/5 rounded-2xl h-[68px] animate-pulse" />
+                  </>
+                )}
+
+                {toolStatus?.nginx && (
+                  <button
+                    onClick={() => {
+                      runQuickAction("Перезапустить Nginx", "sudo systemctl restart nginx");
+                    }}
+                    className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
+                  >
+                    <div className="text-xs font-bold text-fuchsia-400 flex items-center gap-1.5">
+                      <RefreshCw className="w-4 h-4 shrink-0" />
+                      Перезапустить Nginx
+                    </div>
+                    <div className="text-[11px] text-slate-400 leading-normal">
+                      Сброс конфигураций и веток подключения веб-сервера
+                    </div>
+                  </button>
+                )}
 
                 <button
                   onClick={() => {
@@ -374,48 +440,57 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 </button>
 
-                <button
-                  onClick={() => {
-                    runQuickAction("Сбросить Демон Docker", "sudo systemctl restart docker");
-                  }}
-                  className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
-                >
-                  <div className="text-xs font-bold text-indigo-400 flex items-center gap-1.5">
-                    <Activity className="w-4 h-4 shrink-0" />
-                    Сбросить Демон Docker
-                  </div>
-                  <div className="text-[11px] text-slate-400 leading-normal">
-                    Перезапуск фонового контейнерного сокета systemd
-                  </div>
-                </button>
+                {/* Docker: only one of these two makes sense at a time -- offering to
+                    "restart the daemon" when it was never installed, or "install" it again
+                    when it's already running, are both nonsensical. */}
+                {toolStatus?.docker && (
+                  <button
+                    onClick={() => {
+                      runQuickAction("Сбросить Демон Docker", "sudo systemctl restart docker");
+                    }}
+                    className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
+                  >
+                    <div className="text-xs font-bold text-indigo-400 flex items-center gap-1.5">
+                      <Activity className="w-4 h-4 shrink-0" />
+                      Сбросить Демон Docker
+                    </div>
+                    <div className="text-[11px] text-slate-400 leading-normal">
+                      Перезапуск фонового контейнерного сокета systemd
+                    </div>
+                  </button>
+                )}
 
-                <button
-                  onClick={handleInstallDocker}
-                  className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
-                >
-                  <div className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
-                    <Package className="w-4 h-4 shrink-0" />
-                    Установить Docker
-                  </div>
-                  <div className="text-[11px] text-slate-400 leading-normal">
-                    Официальный скрипт get.docker.com, с проверкой запуска службы
-                  </div>
-                </button>
+                {toolStatus && !toolStatus.docker && (
+                  <button
+                    onClick={handleInstallDocker}
+                    className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
+                  >
+                    <div className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                      <Package className="w-4 h-4 shrink-0" />
+                      Установить Docker
+                    </div>
+                    <div className="text-[11px] text-slate-400 leading-normal">
+                      Официальный скрипт get.docker.com, с проверкой запуска службы
+                    </div>
+                  </button>
+                )}
 
-                <button
-                  onClick={() => {
-                    runQuickAction("Обновить Файрвол UFW", "sudo ufw reload");
-                  }}
-                  className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
-                >
-                  <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 shrink-0" />
-                    Обновить Файрвол UFW
-                  </div>
-                  <div className="text-[11px] text-slate-400 leading-normal">
-                    Применение новых правил портов и политик безопасности
-                  </div>
-                </button>
+                {toolStatus?.ufw && (
+                  <button
+                    onClick={() => {
+                      runQuickAction("Обновить Файрвол UFW", "sudo ufw reload");
+                    }}
+                    className="p-3.5 bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 rounded-2xl text-left transition space-y-1 group active:scale-95 shadow-sm"
+                  >
+                    <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 shrink-0" />
+                      Обновить Файрвол UFW
+                    </div>
+                    <div className="text-[11px] text-slate-400 leading-normal">
+                      Применение новых правил портов и политик безопасности
+                    </div>
+                  </button>
+                )}
 
                 <button
                   onClick={() => {
