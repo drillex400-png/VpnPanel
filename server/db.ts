@@ -127,9 +127,27 @@ export const db = {
   async read(): Promise<void> {},
 };
 
+// Every persist() call is chained through this single promise so writes to Postgres
+// are strictly serialized -- never more than one UPDATE in flight at a time. Without
+// this, two concurrent withDb() calls could each capture their own JSON.stringify(dbData)
+// snapshot and fire off independent UPDATE queries; if the network happened to complete
+// them out of order, the LAST one to finish wins regardless of which snapshot was
+// actually newer -- silently reverting to stale data (a classic lost-update race).
+// Serializing means each write only starts once the previous one has settled, and always
+// stringifies dbData at the moment it actually runs, so the final row always reflects the
+// most recent mutation.
+let persistChain: Promise<void> = Promise.resolve();
+
 export async function withDb<T>(fn: (data: DbSchema) => T): Promise<T> {
   const result = fn(dbData);
-  if (persist) await persist();
+  if (persist) {
+    const runPersist = persist;
+    const thisPersist: Promise<void> = persistChain.then(() => runPersist());
+    // Keep the chain alive even if THIS write fails, so one bad/timed-out persist
+    // doesn't permanently wedge every future write behind it.
+    persistChain = thisPersist.catch(() => {});
+    await thisPersist; // still propagate this call's own failure to its caller, as before
+  }
   return result;
 }
 
