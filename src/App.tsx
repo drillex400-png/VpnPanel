@@ -233,6 +233,7 @@ function Dashboard() {
                   server={currentServer}
                   onNavigateTab={(tab) => setActiveTab(tab)}
                   onRefresh={loadLiveMetrics}
+                  connectionLatencyMs={latencyMs}
                 />
               )}
 

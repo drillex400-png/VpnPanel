@@ -1,82 +1,232 @@
-import React, { useState, useEffect, Suspense, lazy } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { SystemMetrics, SSHConfig } from "../types";
 import {
   Cpu,
+  MemoryStick,
   HardDrive,
-  Activity,
   Wifi,
   Server,
-  Zap,
-  CheckCircle2,
-  AlertTriangle,
-  Clock,
-  RefreshCw,
   Terminal,
+  FolderOpen,
+  ListTree,
   ShieldCheck,
-  ChevronRight,
+  Wrench,
+  RefreshCw,
+  AlertTriangle,
+  Activity,
 } from "lucide-react";
-
-// Lazy-loaded: recharts is one of the heaviest deps in the app and previously shipped in the
-// main bundle even when the user never opens the Dashboard tab. Now it's only fetched when
-// this graph card actually needs to render.
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { AnimatedNumber } from "./AnimatedNumber";
-
-const ResourceHistoryChart = lazy(() => import("./ResourceHistoryChart"));
-
-const ChartSkeleton = () => (
-  <div className="w-full h-full flex items-end gap-1.5 px-1 pb-1">
-    {[40, 65, 50, 80, 55, 70, 45, 90, 60, 75, 50, 85].map((h, i) => (
-      <div
-        key={i}
-        className="flex-1 rounded-t-md bg-white/[0.06] animate-pulse"
-        style={{ height: `${h}%`, animationDelay: `${i * 60}ms` }}
-      />
-    ))}
-  </div>
-);
 
 interface DashboardViewProps {
   metrics: SystemMetrics;
   server: SSHConfig;
   onNavigateTab: (tab: any) => void;
   onRefresh: () => void;
+  connectionLatencyMs?: number | null;
 }
+
+type NodeKey = "hub" | "cpu" | "ram" | "disk" | "network";
+type NodeStatus = "normal" | "warn" | "danger";
+
+interface NodeConfig {
+  key: NodeKey;
+  cx: number;
+  cy: number;
+  r: number;
+}
+
+interface LayoutConfig {
+  vbW: number;
+  vbH: number;
+  nodes: Record<NodeKey, NodeConfig>;
+  edges: [NodeKey, NodeKey][];
+}
+
+// Desktop: classic hub-and-spoke -- the server is the hub, every resource is a satellite
+// wired directly to it. Mobile: a single vertical spine (hub -> cpu -> ram -> disk -> network)
+// since a wide radial star has no room to breathe under ~380px -- still a connected node
+// graph, just laid out top-to-bottom instead of compass points.
+function buildLayout(isDesktop: boolean): LayoutConfig {
+  if (isDesktop) {
+    return {
+      vbW: 400,
+      vbH: 260,
+      nodes: {
+        hub: { key: "hub", cx: 200, cy: 130, r: 42 },
+        cpu: { key: "cpu", cx: 200, cy: 34, r: 32 },
+        ram: { key: "ram", cx: 352, cy: 130, r: 32 },
+        disk: { key: "disk", cx: 200, cy: 226, r: 32 },
+        network: { key: "network", cx: 48, cy: 130, r: 32 },
+      },
+      edges: [
+        ["hub", "cpu"],
+        ["hub", "ram"],
+        ["hub", "disk"],
+        ["hub", "network"],
+      ],
+    };
+  }
+  return {
+    vbW: 220,
+    vbH: 480,
+    nodes: {
+      hub: { key: "hub", cx: 110, cy: 46, r: 34 },
+      cpu: { key: "cpu", cx: 110, cy: 148, r: 28 },
+      ram: { key: "ram", cx: 110, cy: 240, r: 28 },
+      disk: { key: "disk", cx: 110, cy: 332, r: 28 },
+      network: { key: "network", cx: 110, cy: 424, r: 28 },
+    },
+    edges: [
+      ["hub", "cpu"],
+      ["cpu", "ram"],
+      ["ram", "disk"],
+      ["disk", "network"],
+    ],
+  };
+}
+
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.innerWidth >= 1024
+  );
+  useEffect(() => {
+    const onResize = () => setIsDesktop(window.innerWidth >= 1024);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return isDesktop;
+}
+
+function statusOf(pct: number): NodeStatus {
+  if (pct > 80) return "danger";
+  if (pct > 50) return "warn";
+  return "normal";
+}
+
+const STATUS_STROKE: Record<NodeStatus, string> = {
+  normal: "url(#nodeGradNormal)",
+  warn: "#fbbf24",
+  danger: "#f43f5e",
+};
+const STATUS_SOLID: Record<NodeStatus, string> = {
+  normal: "#a78bfa",
+  warn: "#fbbf24",
+  danger: "#f43f5e",
+};
+const STATUS_TEXT: Record<NodeStatus, string> = {
+  normal: "text-violet-300",
+  warn: "text-amber-300",
+  danger: "text-rose-400",
+};
+
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  if (data.length < 2) {
+    return <div className="h-10 flex items-center text-[10px] text-slate-500">Собираю историю…</div>;
+  }
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  const pts = data
+    .map((v, i) => `${(i / (data.length - 1)) * 100},${30 - ((v - min) / range) * 27 - 1.5}`)
+    .join(" ");
+  return (
+    <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-10">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** One ring + traveling pulse particle for a single node/edge, driven off the shared <defs>. */
+function ProgressRing({ cx, cy, r, pct, status }: { cx: number; cy: number; r: number; pct: number; status: NodeStatus }) {
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - Math.max(0, Math.min(100, pct)) / 100);
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={5} />
+      <motion.circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill="none"
+        stroke={STATUS_STROKE[status]}
+        strokeWidth={5}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        transform={`rotate(-90 ${cx} ${cy})`}
+        initial={false}
+        animate={{ strokeDashoffset: offset }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      />
+    </g>
+  );
+}
+
+const NODE_META: Record<Exclude<NodeKey, "hub">, { label: string; icon: React.ElementType }> = {
+  cpu: { label: "CPU", icon: Cpu },
+  ram: { label: "RAM", icon: MemoryStick },
+  disk: { label: "Диск", icon: HardDrive },
+  network: { label: "Сеть", icon: Wifi },
+};
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   metrics,
   server,
   onNavigateTab,
   onRefresh,
+  connectionLatencyMs,
 }) => {
-  // Real-time metric history for Recharts graph
-  const [history, setHistory] = useState<
-    { time: string; cpu: number; ramPct: number }[]
-  >([]);
+  const isDesktop = useIsDesktop();
+  const layout = useMemo(() => buildLayout(isDesktop), [isDesktop]);
+
+  const [history, setHistory] = useState<{ cpu: number; ram: number }[]>([]);
+  const [selected, setSelected] = useState<NodeKey>("hub");
 
   useEffect(() => {
-    const ramPct = Math.round(
-      (metrics.memory.usedMb / metrics.memory.totalMb) * 100
-    );
-    const newPoint = {
-      time: metrics.timestamp || new Date().toLocaleTimeString().slice(0, 5),
-      cpu: metrics.cpu.usagePct,
-      ramPct,
-    };
-
-    setHistory((prev) => {
-      const updated = [...prev, newPoint];
-      return updated.slice(-12); // keep last 12 history points
-    });
+    const ramPct = Math.round((metrics.memory.usedMb / metrics.memory.totalMb) * 100);
+    setHistory((prev) => [...prev, { cpu: metrics.cpu.usagePct, ram: ramPct }].slice(-24));
   }, [metrics]);
 
+  // If the SSH link drops, pull focus back to the hub so the error is never buried behind
+  // whatever node the user happened to be inspecting.
+  useEffect(() => {
+    if (metrics.connectionError) setSelected("hub");
+  }, [metrics.connectionError]);
+
+  const ramPct = Math.round((metrics.memory.usedMb / metrics.memory.totalMb) * 100);
   const ramUsedGb = (metrics.memory.usedMb / 1024).toFixed(1);
   const ramTotalGb = (metrics.memory.totalMb / 1024).toFixed(1);
-  const ramPct = Math.round(
-    (metrics.memory.usedMb / metrics.memory.totalMb) * 100
-  );
+  const mainDisk = metrics.disk[0] || { usePct: 0, usedGb: 0, sizeGb: 0, availGb: 0, mount: "/", filesystem: "-" };
+  const netPct = Math.min(100, ((metrics.network.rxKbps + metrics.network.txKbps) / 2000) * 100);
 
-  const mainDisk = metrics.disk[0] || { usePct: 42, usedGb: 42, sizeGb: 100 };
+  const pctFor: Record<Exclude<NodeKey, "hub">, number> = {
+    cpu: metrics.cpu.usagePct,
+    ram: ramPct,
+    disk: mainDisk.usePct,
+    network: netPct,
+  };
+  const statusFor: Record<Exclude<NodeKey, "hub">, NodeStatus> = {
+    cpu: statusOf(pctFor.cpu),
+    ram: statusOf(pctFor.ram),
+    disk: statusOf(pctFor.disk),
+    network: statusOf(pctFor.network),
+  };
+  const hubStatus: NodeStatus = metrics.connectionError
+    ? "danger"
+    : (["cpu", "ram", "disk", "network"] as const).some((k) => statusFor[k] === "danger")
+    ? "danger"
+    : (["cpu", "ram", "disk", "network"] as const).some((k) => statusFor[k] === "warn")
+    ? "warn"
+    : "normal";
+
+  const QUICK_ACTIONS: { tab: any; label: string; icon: React.ElementType }[] = [
+    { tab: "terminal", label: "SSH консоль", icon: Terminal },
+    { tab: "files", label: "Файлы", icon: FolderOpen },
+    { tab: "processes", label: "Процессы", icon: ListTree },
+    { tab: "services", label: "Службы", icon: Server },
+    { tab: "firewall", label: "Файрвол", icon: ShieldCheck },
+    { tab: "tools", label: "Утилиты", icon: Wrench },
+  ];
 
   return (
     <motion.div
@@ -85,326 +235,307 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
     >
-      {/* SSH Connection Alert Banner if live metric connection failed */}
-      {metrics.connectionError && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-xs text-amber-300 flex items-start gap-3 shadow-lg">
-          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-          <div>
-            <h4 className="font-bold text-amber-200">Не удалось подключиться к удаленному SSH хосту</h4>
-            <p className="mt-1 font-mono text-amber-300/90">{metrics.connectionError}</p>
-            <p className="mt-1.5 text-[11px] text-slate-400">
-              Примечание: Локальные IP-адреса (<code className="text-amber-300 font-mono">192.168.x.x</code>, <code className="text-amber-300 font-mono">10.x.x.x</code>) недоступны из облачного контейнера. Используйте демо-профиль для тестирования или укажите публичный IP.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Top Banner: Server Identity */}
-      <div className="bg-gradient-to-r from-slate-900/90 via-[#1a1228] to-slate-900/90 border border-white/10 rounded-3xl p-5 shadow-2xl backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500/20 via-slate-800 to-fuchsia-500/20 border border-violet-500/30 flex items-center justify-center text-violet-400 shrink-0 shadow-lg shadow-violet-950/40">
-            <Server className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h2 className="text-xl font-extrabold text-white tracking-tight">
-                {metrics.os.hostname}
-              </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/15 text-violet-400 border border-violet-500/30 shadow-inner">
-                ОНЛАЙН
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-1">
-              {metrics.os.distro} • Ядро {metrics.os.kernel} ({metrics.os.arch})
-            </p>
-            <div className="flex flex-wrap items-center gap-4 mt-2.5 text-xs text-slate-300">
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-violet-400" />
-                Время работы: <strong className="text-white font-mono">{metrics.os.uptime}</strong>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Cpu className="w-3.5 h-3.5 text-fuchsia-400" />
-                {metrics.cpu.cores} Ядер ({metrics.cpu.model.split(" ")[0]})
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 border-t sm:border-t-0 border-white/10 pt-3 sm:pt-0">
-          <button
-            onClick={() => onNavigateTab("terminal")}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-violet-950/40 transition active:scale-95"
+      {/* Slim identity bar -- hostname + status + refresh. No card chrome; the map below is
+          the visual centerpiece, not another gradient banner competing with it. */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex items-center gap-2">
+          <h2 className="text-lg font-extrabold text-white tracking-tight truncate">{metrics.os.hostname}</h2>
+          <span
+            className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+              hubStatus === "danger"
+                ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                : hubStatus === "warn"
+                ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                : "bg-violet-500/15 text-violet-300 border-violet-500/30"
+            }`}
           >
-            <Terminal className="w-4 h-4" />
-            SSH Консоль
-          </button>
-          <button
-            onClick={() => onNavigateTab("tools")}
-            className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-slate-300 rounded-2xl border border-white/10 transition active:scale-95"
-            title="Системные Утилиты"
+            {hubStatus === "danger" ? "ВНИМАНИЕ" : hubStatus === "warn" ? "НАГРУЗКА" : "ОНЛАЙН"}
+          </span>
+        </div>
+        <button
+          onClick={onRefresh}
+          className="shrink-0 p-2 rounded-xl bg-card text-muted-foreground hover:text-foreground border border-input transition active:scale-95"
+          title="Обновить метрики"
+        >
+          <RefreshCw className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* THE MAP -- server as hub, resources as connected satellite nodes. Click any node to
+          inspect it below; the connecting lines carry an animated pulse whose speed reflects
+          that resource's live load. */}
+      <div className="glass-card rounded-3xl p-3 sm:p-5 shadow-2xl">
+        <div
+          className="relative mx-auto w-full"
+          style={{ maxWidth: isDesktop ? 640 : 320, aspectRatio: `${layout.vbW} / ${layout.vbH}` }}
+        >
+          <svg
+            viewBox={`0 0 ${layout.vbW} ${layout.vbH}`}
+            className="absolute inset-0 w-full h-full"
+            preserveAspectRatio="xMidYMid meet"
           >
-            <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-          </button>
+            <defs>
+              <linearGradient id="nodeGradNormal" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#8b5cf6" />
+                <stop offset="100%" stopColor="#e879f9" />
+              </linearGradient>
+            </defs>
+
+            {/* Edges + traveling pulse particles */}
+            {layout.edges.map(([a, b]) => {
+              const from = layout.nodes[a];
+              const to = layout.nodes[b];
+              const targetStatus = b === "hub" ? hubStatus : statusFor[b as Exclude<NodeKey, "hub">];
+              const pathId = `edge-${a}-${b}`;
+              const pct = b === "hub" ? 0 : pctFor[b as Exclude<NodeKey, "hub">];
+              const dur = Math.max(0.7, 2.4 - (pct / 100) * 1.6);
+              return (
+                <g key={pathId}>
+                  <path
+                    id={pathId}
+                    d={`M ${from.cx} ${from.cy} L ${to.cx} ${to.cy}`}
+                    fill="none"
+                    stroke={STATUS_SOLID[targetStatus]}
+                    strokeOpacity={0.35}
+                    strokeWidth={2}
+                  />
+                  <circle r={3} fill={STATUS_SOLID[targetStatus]}>
+                    <animateMotion dur={`${dur}s`} repeatCount="indefinite">
+                      <mpath href={`#${pathId}`} />
+                    </animateMotion>
+                  </circle>
+                </g>
+              );
+            })}
+
+            {/* Progress rings for every node (hub included -- reflects worst-case status) */}
+            <ProgressRing {...layout.nodes.hub} pct={hubStatus === "normal" ? 8 : hubStatus === "warn" ? 55 : 92} status={hubStatus} />
+            {(["cpu", "ram", "disk", "network"] as const).map((k) => (
+              <ProgressRing key={k} {...layout.nodes[k]} pct={pctFor[k]} status={statusFor[k]} />
+            ))}
+          </svg>
+
+          {/* HTML overlays: icons/labels/values, positioned on the same logical grid as the SVG */}
+          {(Object.keys(layout.nodes) as NodeKey[]).map((key) => {
+            const n = layout.nodes[key];
+            const left = (n.cx / layout.vbW) * 100;
+            const top = (n.cy / layout.vbH) * 100;
+            const isHub = key === "hub";
+            const status = isHub ? hubStatus : statusFor[key as Exclude<NodeKey, "hub">];
+            const Icon = isHub ? Server : NODE_META[key as Exclude<NodeKey, "hub">].icon;
+            const isSelected = selected === key;
+            const sizePx = isHub ? (isDesktop ? 74 : 56) : isDesktop ? 56 : 44;
+            return (
+              <button
+                key={key}
+                onClick={() => setSelected(key)}
+                className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 group"
+                style={{ left: `${left}%`, top: `${top}%` }}
+              >
+                <span
+                  className="relative flex items-center justify-center rounded-full transition-transform group-active:scale-95"
+                  style={{ width: sizePx, height: sizePx }}
+                >
+                  {status === "danger" && (
+                    <span className="absolute inset-0 rounded-full bg-destructive/30 animate-ping" />
+                  )}
+                  <span
+                    className={`absolute inset-1 rounded-full bg-card border ${
+                      isSelected ? "border-primary ring-2 ring-ring/50" : "border-input"
+                    } shadow-lg flex items-center justify-center`}
+                  >
+                    <Icon className={`${isHub ? "w-6 h-6" : "w-4 h-4 sm:w-5 sm:h-5"} ${STATUS_TEXT[status]}`} />
+                  </span>
+                </span>
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                  {isHub ? "Сервер" : NODE_META[key as Exclude<NodeKey, "hub">].label}
+                </span>
+                {!isHub && (
+                  <span className={`text-[10px] sm:text-xs font-mono font-bold tabular-nums ${STATUS_TEXT[status]}`}>
+                    <AnimatedNumber value={Math.round(pctFor[key as Exclude<NodeKey, "hub">])} suffix="%" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* 4 Core Gauge Widgets -- CPU is the hero metric (bigger number + subtle glow ring) since
-          it's the number most people glance at first on a live server monitor. All four now share
-          one accent family (violet/fuchsia) for their "normal" state -- amber/rose are reserved
-          strictly for real threshold warnings (>50%/>80-85%), not decorative per-tile variety. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* CPU Card -- hero */}
-        <div className="glass-card rounded-3xl p-4.5 shadow-xl space-y-2 glass-card-hover ring-1 ring-violet-500/25 relative overflow-hidden">
-          <div className="absolute -top-8 -right-8 w-24 h-24 bg-violet-500/10 rounded-full blur-2xl pointer-events-none" />
-          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
-            Загрузка CPU
-          </p>
-          <p className="text-3xl font-extrabold font-mono text-violet-400 drop-shadow-sm tabular-nums">
-            <AnimatedNumber value={metrics.cpu.usagePct} suffix="%" />
-          </p>
-          <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
-            <motion.div
-              className={`h-full rounded-full ${
-                metrics.cpu.usagePct > 80
-                  ? "bg-rose-500"
-                  : metrics.cpu.usagePct > 50
-                  ? "bg-amber-400"
-                  : "bg-gradient-to-r from-violet-500 to-fuchsia-400"
-              }`}
-              animate={{ width: `${metrics.cpu.usagePct}%` }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            />
-          </div>
-          <div className="text-[10px] text-slate-400 pt-1 flex justify-between font-mono font-medium">
-            <span>{metrics.cpu.cores} vCPUs</span>
-            <span>Load: {metrics.cpu.loadAvg[0]}</span>
-          </div>
-        </div>
+      {/* Detail panel -- shows whichever node is selected. Replaces the old always-on card
+          grid + permanent chart + permanent disk table with one focused inspector. */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={selected}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.2 }}
+          className="glass-card rounded-3xl p-5 shadow-xl"
+        >
+          {selected === "hub" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                  <Server className="w-4 h-4 text-primary" />
+                  {metrics.os.distro} • Ядро {metrics.os.kernel} ({metrics.os.arch})
+                </h3>
+                <span className="text-[11px] font-mono text-muted-foreground">
+                  Аптайм: <strong className="text-foreground">{metrics.os.uptime}</strong>
+                </span>
+              </div>
 
-        {/* RAM Card */}
-        <div className="glass-card rounded-3xl p-4.5 shadow-xl space-y-2 glass-card-hover">
-          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
-            Память ОЗУ
-          </p>
-          <p className="text-2xl font-bold font-mono text-fuchsia-400 drop-shadow-sm tabular-nums">
-            <AnimatedNumber value={parseFloat(ramUsedGb)} decimals={1} /><span className="text-xs text-slate-400">/{ramTotalGb}GB</span>
-          </p>
-          <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
-            <motion.div
-              className={`h-full rounded-full ${
-                ramPct > 85 ? "bg-rose-500" : "bg-gradient-to-r from-violet-500 to-fuchsia-400"
-              }`}
-              animate={{ width: `${ramPct}%` }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            />
-          </div>
-          <div className="text-[10px] text-slate-400 pt-1 flex justify-between font-mono font-medium">
-            <span>Кэш: {metrics.memory.cachedMb}MB</span>
-            <span>{ramPct}%</span>
-          </div>
-        </div>
+              {metrics.connectionError ? (
+                <div className="bg-destructive/10 border border-destructive/30 rounded-2xl p-4 text-xs text-destructive flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold">Не удалось подключиться к удалённому SSH хосту</p>
+                    <p className="mt-1 font-mono opacity-90">{metrics.connectionError}</p>
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      Локальные IP (192.168.x.x, 10.x.x.x) недоступны из облачного контейнера. Используйте демо-профиль
+                      или укажите публичный IP.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Activity className="w-3.5 h-3.5 text-primary" />
+                  SSH-сессия активна
+                  {typeof connectionLatencyMs === "number" && (
+                    <span className="font-mono text-foreground">· {connectionLatencyMs}мс</span>
+                  )}
+                </div>
+              )}
 
-        {/* Disk I/O Card */}
-        <div className="glass-card rounded-3xl p-4.5 shadow-xl space-y-2 glass-card-hover">
-          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
-            Занято на Диске
-          </p>
-          <p className="text-2xl font-bold font-mono text-violet-300 drop-shadow-sm tabular-nums">
-            <AnimatedNumber value={mainDisk.usePct} suffix="%" /><span className="text-xs text-slate-400"> ({mainDisk.usedGb}GB)</span>
-          </p>
-          <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
-            <motion.div
-              className={`h-full rounded-full ${
-                mainDisk.usePct > 85 ? "bg-rose-500" : "bg-gradient-to-r from-violet-500 to-fuchsia-400"
-              }`}
-              animate={{ width: `${mainDisk.usePct}%` }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            />
-          </div>
-          <div className="text-[10px] text-slate-400 pt-1 flex justify-between font-mono font-medium">
-            <span>{mainDisk.availGb}GB Свободно</span>
-            <span>NVMe SSD</span>
-          </div>
-        </div>
-
-        {/* Network / Uptime Card */}
-        <div className="glass-card rounded-3xl p-4.5 shadow-xl space-y-2 glass-card-hover">
-          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
-            Трафик Сети
-          </p>
-          <p className="text-2xl font-bold font-mono text-fuchsia-300 drop-shadow-sm tabular-nums">
-            <AnimatedNumber value={metrics.network.txKbps} /><span className="text-xs text-slate-400">KB/s</span>
-          </p>
-          <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
-            <motion.div
-              className="bg-gradient-to-r from-violet-500 to-fuchsia-400 h-full rounded-full"
-              animate={{ width: `${Math.min(100, (metrics.network.txKbps / 1200) * 100)}%` }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            />
-          </div>
-          <div className="text-[10px] text-slate-400 pt-1 flex justify-between font-mono font-medium">
-            <span>↓ {metrics.network.rxKbps} KB/s</span>
-            <span>{metrics.network.activeConnections} сокетов</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Real-time Graph & Quick Modules */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* History Graph (2 Cols) */}
-        <div className="lg:col-span-2 glass-card rounded-3xl p-5 shadow-2xl space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-violet-400" />
-                Монитор Ресурсов в Реальном Времени
-              </h2>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                График динамики CPU (%) и оперативной памяти (%)
-              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 pt-1">
+                {QUICK_ACTIONS.map(({ tab, label, icon: Icon }) => (
+                  <button
+                    key={tab}
+                    onClick={() => onNavigateTab(tab)}
+                    className="flex flex-col items-center gap-1.5 py-3 rounded-2xl bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground border border-input transition active:scale-95"
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span className="text-[10px] font-semibold text-center leading-tight">{label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex items-center gap-3 text-xs">
-              <span className="flex items-center gap-1.5 text-violet-400 font-mono text-[11px] font-bold">
-                <span className="w-2 h-2 rounded-full bg-violet-400 shadow-sm shadow-violet-400" /> CPU
-              </span>
-              <span className="flex items-center gap-1.5 text-fuchsia-400 font-mono text-[11px] font-bold">
-                <span className="w-2 h-2 rounded-full bg-fuchsia-400 shadow-sm shadow-fuchsia-400" /> RAM
-              </span>
+          )}
+
+          {selected === "cpu" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Загрузка CPU</h3>
+                <span className={`text-2xl font-extrabold font-mono tabular-nums ${STATUS_TEXT[statusFor.cpu]}`}>
+                  <AnimatedNumber value={metrics.cpu.usagePct} suffix="%" />
+                </span>
+              </div>
+              <Sparkline data={history.map((h) => h.cpu)} color={STATUS_SOLID[statusFor.cpu]} />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-1">
+                <div className="bg-background/40 rounded-xl p-2.5">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold">Ядра</p>
+                  <p className="font-mono font-bold text-foreground">{metrics.cpu.cores}</p>
+                </div>
+                <div className="bg-background/40 rounded-xl p-2.5 col-span-2 sm:col-span-1">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold">Модель</p>
+                  <p className="font-mono text-foreground truncate">{metrics.cpu.model}</p>
+                </div>
+                <div className="bg-background/40 rounded-xl p-2.5 col-span-2">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold">Load average (1/5/15)</p>
+                  <p className="font-mono font-bold text-foreground">{metrics.cpu.loadAvg.join(" / ")}</p>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="h-56 w-full pt-2">
-            <Suspense fallback={<ChartSkeleton />}>
-              <ResourceHistoryChart history={history} />
-            </Suspense>
-          </div>
-        </div>
-
-        {/* Server Shortcuts & Quick Navigation */}
-        <div className="glass-card rounded-3xl p-5 shadow-2xl space-y-3 flex flex-col justify-between">
-          <div>
-            <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2 mb-1">
-              <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-              Быстрые Ярлыки
-            </h2>
-            <p className="text-[11px] text-slate-400 mb-4">
-              Быстрый переход к разделам управления сервером
-            </p>
-
-            <div className="space-y-2.5">
-              <button
-                onClick={() => onNavigateTab("files")}
-                className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 transition group text-xs text-slate-200 active:scale-98"
-              >
-                <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
-                    <HardDrive className="w-3.5 h-3.5" />
-                  </span>
-                  Файловый менеджер (/var/www, /etc)
+          {selected === "ram" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Память ОЗУ</h3>
+                <span className={`text-2xl font-extrabold font-mono tabular-nums ${STATUS_TEXT[statusFor.ram]}`}>
+                  <AnimatedNumber value={parseFloat(ramUsedGb)} decimals={1} /> / {ramTotalGb}GB
                 </span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition" />
-              </button>
-
-              <button
-                onClick={() => onNavigateTab("processes")}
-                className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 transition group text-xs text-slate-200 active:scale-98"
-              >
-                <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
-                    <Cpu className="w-3.5 h-3.5" />
-                  </span>
-                  Диспетчер процессов (htop)
-                </span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition" />
-              </button>
-
-              <button
-                onClick={() => onNavigateTab("services")}
-                className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 transition group text-xs text-slate-200 active:scale-98"
-              >
-                <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  </span>
-                  Службы Systemd и Демоны
-                </span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition" />
-              </button>
-
-              <button
-                onClick={() => onNavigateTab("firewall")}
-                className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 transition group text-xs text-slate-200 active:scale-98"
-              >
-                <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                  </span>
-                  Файрвол UFW и Открытые Порты
-                </span>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition" />
-              </button>
+              </div>
+              <Sparkline data={history.map((h) => h.ram)} color={STATUS_SOLID[statusFor.ram]} />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-1">
+                <div className="bg-background/40 rounded-xl p-2.5">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold">Кэш</p>
+                  <p className="font-mono font-bold text-foreground">{metrics.memory.cachedMb}MB</p>
+                </div>
+                <div className="bg-background/40 rounded-xl p-2.5">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold">Свободно</p>
+                  <p className="font-mono font-bold text-foreground">{metrics.memory.freeMb}MB</p>
+                </div>
+                <div className="bg-background/40 rounded-xl p-2.5 col-span-2 sm:col-span-2">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold">Swap</p>
+                  <p className="font-mono font-bold text-foreground">
+                    {metrics.memory.swapUsedMb} / {metrics.memory.swapTotalMb}MB
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-500 font-mono">
-            <span>SSH: Ed25519</span>
-            <span className="text-violet-400 font-medium font-sans">Защищенная сессия</span>
-          </div>
-        </div>
-      </div>
+          {selected === "disk" && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                Подключённые тома ({metrics.disk.length})
+              </h3>
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-left text-xs min-w-[420px]">
+                  <thead>
+                    <tr className="border-b border-input text-[10px] text-muted-foreground uppercase font-bold tracking-widest">
+                      <th className="py-2 px-1">Точка монтирования</th>
+                      <th className="py-2 px-1">ФС</th>
+                      <th className="py-2 px-1">Занято</th>
+                      <th className="py-2 px-1 text-right">Свободно</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border font-mono text-[11px]">
+                    {metrics.disk.map((d, i) => (
+                      <tr key={i}>
+                        <td className="py-2.5 px-1 font-semibold text-foreground">{d.mount}</td>
+                        <td className="py-2.5 px-1 text-muted-foreground">{d.filesystem}</td>
+                        <td className="py-2.5 px-1 w-36">
+                          <div className="flex items-center gap-2">
+                            <div className="w-full bg-background/60 h-1.5 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${d.usePct > 80 ? "bg-destructive" : "bg-primary"}`}
+                                style={{ width: `${d.usePct}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-muted-foreground font-sans">{d.usePct}%</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-1 text-right text-foreground font-semibold">{d.availGb}GB</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
-      {/* Disks & File Systems Table */}
-      <div className="glass-card rounded-3xl p-5 shadow-2xl space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
-          <HardDrive className="w-4 h-4 text-violet-400" />
-          Подключенные Дисковые Тома ({metrics.disk.length})
-        </h2>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead>
-              <tr className="border-b border-slate-800/60 text-[10px] text-slate-500 uppercase font-bold tracking-widest">
-                <th className="py-2.5 px-3">Точка монтирования</th>
-                <th className="py-2.5 px-3">Файловая система</th>
-                <th className="py-2.5 px-3">Объем</th>
-                <th className="py-2.5 px-3">Занято</th>
-                <th className="py-2.5 px-3 text-right">Свободно</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
-              {metrics.disk.map((d, i) => (
-                <tr key={i} className="hover:bg-slate-800/40 transition">
-                  <td className="py-3 px-3 font-semibold text-violet-400">
-                    {d.mount}
-                  </td>
-                  <td className="py-3 px-3 text-slate-500">{d.filesystem}</td>
-                  <td className="py-3 px-3 text-slate-300">
-                    {d.usedGb} / {d.sizeGb} GB
-                  </td>
-                  <td className="py-3 px-3 w-40">
-                    <div className="flex items-center gap-2">
-                      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${
-                            d.usePct > 80 ? "bg-rose-500" : "bg-violet-500"
-                          }`}
-                          style={{ width: `${d.usePct}%` }}
-                        />
-                      </div>
-                      <span className="text-[10px] text-slate-500 font-sans">
-                        {d.usePct}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-3 text-right text-violet-400 font-semibold">
-                    {d.availGb} GB
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+          {selected === "network" && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Трафик сети</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div className="bg-background/40 rounded-xl p-2.5">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold">Входящий ↓</p>
+                  <p className={`font-mono font-bold ${STATUS_TEXT[statusFor.network]}`}>{metrics.network.rxKbps} KB/s</p>
+                </div>
+                <div className="bg-background/40 rounded-xl p-2.5">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold">Исходящий ↑</p>
+                  <p className={`font-mono font-bold ${STATUS_TEXT[statusFor.network]}`}>{metrics.network.txKbps} KB/s</p>
+                </div>
+                <div className="bg-background/40 rounded-xl p-2.5 col-span-2 sm:col-span-1">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold">Активные сокеты</p>
+                  <p className="font-mono font-bold text-foreground">{metrics.network.activeConnections}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </motion.div>
   );
 };
