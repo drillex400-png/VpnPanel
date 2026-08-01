@@ -1,5 +1,6 @@
 import { Client as SSHClient } from "ssh2";
 import { clearRateTracking } from "./metricsRateTracker.js";
+import { BoundedCollector, startExecTimeout, EXEC_TIMEOUT_MS } from "./execLimits.js";
 
 export interface SshConnConfig {
   host: string;
@@ -151,8 +152,10 @@ export async function execPooled(key: string, config: SshConnConfig, command: st
   }
 
   return new Promise<SshExecResult>((resolve) => {
-    let stdout = "";
-    let stderr = "";
+    const stdout = new BoundedCollector();
+    const stderr = new BoundedCollector();
+    let settled = false;
+
     conn.exec(command, (err, stream) => {
       if (err) {
         // The pooled connection may be stale (e.g. server rebooted) -- drop it so the next
@@ -160,16 +163,39 @@ export async function execPooled(key: string, config: SshConnConfig, command: st
         closePooledConnection(key);
         return resolve({ stdout: "", stderr: err.message, code: 1 });
       }
+
+      // Hard ceiling on how long a single command may run. Without this, a hung/interactive
+      // command (or a stalled network path) would hold this pooled channel -- and the HTTP
+      // request awaiting it -- open indefinitely. On timeout we close just this channel
+      // (NOT the whole pooled connection, which may be serving other in-flight requests).
+      const timeout = startExecTimeout(EXEC_TIMEOUT_MS, () => {
+        if (settled) return;
+        settled = true;
+        try {
+          stream.close();
+        } catch {
+          // ignore
+        }
+        resolve({
+          stdout: stdout.toString(),
+          stderr: stderr.toString() + `\n[Превышено время выполнения команды: ${EXEC_TIMEOUT_MS / 1000}с]`,
+          code: 124, // conventional shell "command timed out" exit code
+        });
+      });
+
       stream.on("close", (code: number) => {
+        timeout.clear();
         const entry = pool.get(key);
         if (entry) entry.lastUsed = Date.now();
-        resolve({ stdout, stderr, code: code || 0 });
+        if (settled) return;
+        settled = true;
+        resolve({ stdout: stdout.toString(), stderr: stderr.toString(), code: code || 0 });
       });
       stream.on("data", (data: Buffer) => {
-        stdout += data.toString();
+        stdout.append(data);
       });
       stream.stderr.on("data", (data: Buffer) => {
-        stderr += data.toString();
+        stderr.append(data);
       });
     });
   });

@@ -3,6 +3,7 @@ import dns from "dns";
 import { Client as SSHClient } from "ssh2";
 import { execPooled } from "./sshPool.js";
 import { CONFIG } from "../config.js";
+import { BoundedCollector, startExecTimeout, EXEC_TIMEOUT_MS } from "./execLimits.js";
 
 export interface SshConnectionParams {
   host: string;
@@ -102,7 +103,7 @@ export async function runSshCommand(
       };
     }
     return new Promise((resolve) => {
-      exec(command, { timeout: 15000 }, (err, stdout, stderr) => {
+      exec(command, { timeout: EXEC_TIMEOUT_MS, maxBuffer: 5 * 1024 * 1024 }, (err, stdout, stderr) => {
         resolve({
           stdout: stdout || "",
           stderr: stderr || (err ? err.message : ""),
@@ -114,8 +115,9 @@ export async function runSshCommand(
 
   return new Promise((resolve) => {
     const conn = new SSHClient();
-    let stdout = "";
-    let stderr = "";
+    const stdout = new BoundedCollector();
+    const stderr = new BoundedCollector();
+    let settled = false;
 
     conn.on("ready", () => {
       conn.exec(command, (err, stream) => {
@@ -123,15 +125,37 @@ export async function runSshCommand(
           conn.end();
           return resolve({ stdout: "", stderr: err.message, code: 1 });
         }
-        stream.on("close", (code: number) => {
+
+        // Same hard ceiling as the pooled path (sshPool.ts): a hung/interactive command
+        // must not hold this ad-hoc connection (and its caller) open forever.
+        const timeout = startExecTimeout(EXEC_TIMEOUT_MS, () => {
+          if (settled) return;
+          settled = true;
+          try {
+            stream.close();
+          } catch {
+            // ignore
+          }
           conn.end();
-          resolve({ stdout, stderr, code: code || 0 });
+          resolve({
+            stdout: stdout.toString(),
+            stderr: stderr.toString() + `\n[Превышено время выполнения команды: ${EXEC_TIMEOUT_MS / 1000}с]`,
+            code: 124,
+          });
+        });
+
+        stream.on("close", (code: number) => {
+          timeout.clear();
+          conn.end();
+          if (settled) return;
+          settled = true;
+          resolve({ stdout: stdout.toString(), stderr: stderr.toString(), code: code || 0 });
         });
         stream.on("data", (data: Buffer) => {
-          stdout += data.toString();
+          stdout.append(data);
         });
         stream.stderr.on("data", (data: Buffer) => {
-          stderr += data.toString();
+          stderr.append(data);
         });
       });
     });
