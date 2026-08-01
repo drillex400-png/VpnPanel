@@ -16,18 +16,42 @@ import {
   X,
   Check,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 
 interface FirewallViewProps {
   server: SSHConfig;
 }
 
+// ufw accepts a single port (1-65535) or a port range "start:end". Anything else
+// is rejected client-side before it ever reaches a shell command.
+const isValidUfwPort = (value: string): boolean =>
+  /^\d{1,5}(:\d{1,5})?$/.test(value.trim()) &&
+  value
+    .trim()
+    .split(":")
+    .every((p) => Number(p) >= 1 && Number(p) <= 65535);
+
+// Accepts "Anywhere"/empty (no source restriction), a bare IPv4, or an IPv4 CIDR block.
+// Good enough gate for what ufw itself understands as a `from <addr>` clause -- ufw will
+// still reject a semantically-invalid-but-regex-valid address on its own, we're only
+// trying to keep obviously wrong input (hostnames, junk text) out of the shell command.
+const isValidUfwSource = (value: string): boolean => {
+  const v = value.trim();
+  if (!v || v.toLowerCase() === "anywhere") return true;
+  return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d{1,2})?$/.test(v);
+};
+
 export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
   const toast = useToast();
   const [rules, setRules] = useState<FirewallRule[]>([]);
   const [ufwActive, setUfwActive] = useState(false);
+  const [ufwInstalled, setUfwInstalled] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
+  const [isSubmittingRule, setIsSubmittingRule] = useState(false);
+  const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -47,6 +71,17 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
   const fetchFirewallData = async () => {
     setIsLoading(true);
     try {
+      // 0. Is ufw even installed on this box? Without this, a missing binary just silently
+      // fails to parse below and we'd wrongly report "0 rules, inactive".
+      const whichRes = await execCommand(server, "command -v ufw >/dev/null 2>&1 && echo UFW_OK || echo UFW_MISSING");
+      const installed = (whichRes?.stdout || "").includes("UFW_OK");
+      setUfwInstalled(installed);
+      if (!installed) {
+        setFetchError(null);
+        setRules([]);
+        return;
+      }
+
       // 1. UFW status & rules
       const ufwRes = await execCommand(server, "sudo ufw status verbose");
       if (ufwRes && ufwRes.stdout) {
@@ -73,7 +108,9 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
             });
           }
         }
-        if (parsedRules.length > 0) setRules(parsedRules);
+        // Real, authoritative state from the server -- always replace, even with an empty
+        // list, so a rule that was actually removed (by us or anyone else) disappears too.
+        setRules(parsedRules);
       }
 
       // 2. Open listening ports via ss -tulpn
@@ -108,7 +145,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
             }
           }
         }
-        if (parsedPorts.length > 0) setListeningPorts(parsedPorts);
+        setListeningPorts(parsedPorts);
       }
       setFetchError(null);
     } catch (e: any) {
@@ -123,35 +160,91 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
 
   useEffect(() => {
     fetchFirewallData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server.id, server.host]);
 
-  const handleToggleUfw = async () => {
-    const nextState = !ufwActive;
-    await execCommand(server, `sudo ufw ${nextState ? "enable" : "disable"}`);
-    setUfwActive(nextState);
-  };
-
-  const handleDeleteRule = async (rule: FirewallRule) => {
-    if (confirm(`Remove firewall rule for port ${rule.port}/${rule.protocol}?`)) {
-      // rule.port/rule.action are parsed from `ufw status verbose` output, not raw
-      // free-text, but we still single-quote them before rebuilding the shell
-      // command -- defense in depth against an unexpected/crafted upstream value.
-      await execCommand(
+  // Detects which local port sshd is actually listening on (usually 22, but not always) --
+  // used as a safety net before force-enabling ufw so we never lock ourselves out of the
+  // very server we're managing.
+  const detectSshPort = async (): Promise<string> => {
+    try {
+      const res = await execCommand(
         server,
-        `sudo ufw delete ${shQuote(rule.action.toLowerCase())} ${shQuote(`${rule.port}/${rule.protocol}`)}`
+        "ss -tlnp 2>/dev/null | grep -i sshd | grep -oE ':[0-9]+' | head -1 | tr -d ':'"
       );
-      setRules((prev) => prev.filter((r) => r.id !== rule.id));
+      const port = (res?.stdout || "").trim();
+      return /^\d{1,5}$/.test(port) ? port : "22";
+    } catch {
+      return "22";
     }
   };
 
-  // ufw accepts a single port (1-65535) or a port range "start:end". Anything else
-  // is rejected client-side before it ever reaches a shell command.
-  const isValidUfwPort = (value: string): boolean =>
-    /^\d{1,5}(:\d{1,5})?$/.test(value.trim()) &&
-    value
-      .trim()
-      .split(":")
-      .every((p) => Number(p) >= 1 && Number(p) <= 65535);
+  const handleToggleUfw = async () => {
+    const nextState = !ufwActive;
+    setIsToggling(true);
+    try {
+      if (nextState) {
+        // Enabling ufw for the first time can lock out the very SSH session managing it if
+        // there's no allow rule for the SSH port yet -- `ufw enable` itself only warns about
+        // this interactively, and we run it non-interactively (--force, no TTY to answer the
+        // prompt). So we proactively ensure an allow rule for the detected SSH port exists
+        // FIRST, before ufw starts enforcing anything.
+        const sshPort = await detectSshPort();
+        await execCommand(server, `sudo ufw allow ${shQuote(`${sshPort}/tcp`)}`);
+        // --force skips the interactive "Proceed with operation (y|n)?" prompt, which would
+        // otherwise hang (or silently no-op) since exec has no stdin/TTY attached.
+        await execCommand(server, "sudo ufw --force enable");
+      } else {
+        await execCommand(server, "sudo ufw disable");
+      }
+
+      // Verify against real server state rather than trusting the command's exit code --
+      // re-read `ufw status` and confirm it actually flipped.
+      const verifyRes = await execCommand(server, "sudo ufw status");
+      const isActiveNow = (verifyRes?.stdout || "").toLowerCase().includes("status: active");
+
+      if (isActiveNow !== nextState) {
+        toast.error(
+          "Не удалось изменить статус файрвола",
+          `Ожидалось состояние "${nextState ? "активен" : "неактивен"}", но сервер сообщает обратное`
+        );
+      } else {
+        toast.success(
+          nextState ? "Файрвол включён" : "Файрвол отключён",
+          nextState ? "Правило для SSH-порта добавлено автоматически, чтобы не потерять доступ" : undefined
+        );
+      }
+      await fetchFirewallData();
+    } catch (e: any) {
+      toast.error("Ошибка при изменении статуса файрвола", e?.message);
+    } finally {
+      setIsToggling(false);
+    }
+  };
+
+  const handleDeleteRule = async (rule: FirewallRule) => {
+    if (!confirm(`Удалить правило файрвола для порта ${rule.port}/${rule.protocol}?`)) return;
+    setDeletingRuleId(rule.id);
+    try {
+      // rule.port/rule.action are parsed from `ufw status verbose` output, not raw
+      // free-text, but we still single-quote them before rebuilding the shell
+      // command -- defense in depth against an unexpected/crafted upstream value.
+      const res = await execCommand(
+        server,
+        `sudo ufw --force delete ${shQuote(rule.action.toLowerCase())} ${shQuote(`${rule.port}/${rule.protocol}`)}`
+      );
+      if (res.code !== 0) {
+        throw new Error(res.stderr || "ufw delete завершился с ошибкой");
+      }
+      toast.success("Правило удалено", `${rule.port}/${rule.protocol}`);
+      // Re-sync from real server state instead of trusting our own optimistic patch.
+      await fetchFirewallData();
+    } catch (e: any) {
+      toast.error("Не удалось удалить правило", e?.message);
+    } finally {
+      setDeletingRuleId(null);
+    }
+  };
 
   const handleAddRule = async () => {
     const trimmedPort = newPort.trim();
@@ -160,22 +253,42 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
       toast.error("Некорректный порт", "Введите порт 1-65535 или диапазон вида 6000:6007");
       return;
     }
-    const cmd = `sudo ufw ${shQuote(newAction.toLowerCase())} ${shQuote(`${trimmedPort}/${newProto}`)}`;
-    await execCommand(server, cmd);
+    const trimmedFrom = newFrom.trim() || "Anywhere";
+    if (!isValidUfwSource(trimmedFrom)) {
+      toast.error("Некорректный источник", 'Введите "Anywhere", IP-адрес (1.2.3.4) или CIDR (1.2.3.0/24)');
+      return;
+    }
 
-    const newRule: FirewallRule = {
-      id: "rule-" + Date.now(),
-      port: newPort.trim(),
-      protocol: newProto,
-      action: newAction,
-      from: newFrom.trim() || "Anywhere",
-      comment: newComment.trim() || "User Rule",
-    };
+    setIsSubmittingRule(true);
+    try {
+      const isAnywhere = trimmedFrom.toLowerCase() === "anywhere";
+      // Two shapes: unrestricted ("allow 8080/tcp") vs source-restricted
+      // ("allow from 1.2.3.4 to any port 8080 proto tcp") -- ufw's "any" proto isn't valid
+      // in the `proto` clause of the `from ... to any port ...` form, so it's simply omitted.
+      const cmd = isAnywhere
+        ? `sudo ufw ${shQuote(newAction.toLowerCase())} ${shQuote(`${trimmedPort}/${newProto}`)}`
+        : `sudo ufw ${shQuote(newAction.toLowerCase())} from ${shQuote(trimmedFrom)} to any port ${shQuote(
+            trimmedPort
+          )}${newProto !== "any" ? ` proto ${shQuote(newProto)}` : ""}`;
 
-    setRules((prev) => [...prev, newRule]);
-    setShowAddModal(false);
-    setNewPort("");
-    setNewComment("");
+      const res = await execCommand(server, cmd);
+      if (res.code !== 0) {
+        throw new Error(res.stderr || "ufw завершился с ошибкой");
+      }
+
+      toast.success("Правило добавлено", `${trimmedPort}/${newProto} — ${newAction}`);
+      setShowAddModal(false);
+      setNewPort("");
+      setNewComment("");
+      setNewFrom("Anywhere");
+      // Re-sync from real server state (also picks up ufw's own numbering/formatting)
+      // instead of trusting a locally-fabricated FirewallRule object.
+      await fetchFirewallData();
+    } catch (e: any) {
+      toast.error("Не удалось добавить правило", e?.message);
+    } finally {
+      setIsSubmittingRule(false);
+    }
   };
 
   return (
@@ -225,17 +338,20 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
           </button>
           <button
             onClick={handleToggleUfw}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
+            disabled={isToggling || !ufwInstalled}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition disabled:opacity-50 ${
               ufwActive
                 ? "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
                 : "bg-amber-600 hover:bg-amber-500 text-white shadow-md"
             }`}
           >
+            {isToggling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {ufwActive ? "Отключить Файрвол" : "Включить UFW"}
           </button>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold shadow-md transition"
+            disabled={!ufwInstalled}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold shadow-md transition disabled:opacity-50"
           >
             <Plus className="w-4 h-4" />
             Добавить Правило
@@ -248,6 +364,12 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
           Загрузка данных фаервола…
         </div>
       )}
+      {hasLoadedOnce && !ufwInstalled && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0 text-slate-400" />
+          <span>UFW не установлен на этом сервере. Установите его (например, <code className="font-mono text-amber-400">apt install ufw</code>) через вкладку «Утилиты» или терминал.</span>
+        </div>
+      )}
       {hasLoadedOnce && fetchError && (
         <div className="bg-rose-950/40 border border-rose-800/60 rounded-2xl p-4 text-xs text-rose-300 flex items-center gap-2">
           <ShieldAlert className="w-4 h-4 shrink-0" />
@@ -256,11 +378,16 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
       )}
 
       {/* Rules Table */}
+      {ufwInstalled && (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-md overflow-hidden p-4 space-y-3">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
           <Shield className="w-4 h-4 text-amber-400" />
           Активные Правила Безопасности UFW ({rules.length})
         </h3>
+
+        {rules.length === 0 && hasLoadedOnce && !isLoading && (
+          <p className="text-xs text-slate-500 py-2">Нет активных правил UFW.</p>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
@@ -297,10 +424,15 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
                   <td className="py-3 px-3 text-right">
                     <button
                       onClick={() => handleDeleteRule(rule)}
-                      className="p-1.5 hover:bg-slate-800 text-rose-400 rounded transition"
+                      disabled={deletingRuleId === rule.id}
+                      className="p-1.5 hover:bg-slate-800 text-rose-400 rounded transition disabled:opacity-50"
                       title="Удалить правило"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {deletingRuleId === rule.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
                     </button>
                   </td>
                 </tr>
@@ -309,6 +441,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
           </table>
         </div>
       </div>
+      )}
 
       {/* Listening Ports Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">
@@ -316,6 +449,10 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
           <Radio className="w-4 h-4 text-purple-400" />
           Открытые Прослушиваемые Порты (Netstat / Сокеты)
         </h3>
+
+        {listeningPorts.length === 0 && hasLoadedOnce && !isLoading && (
+          <p className="text-xs text-slate-500 py-2">Нет данных о прослушиваемых портах.</p>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
@@ -394,6 +531,20 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
                 </div>
 
                 <div>
+                  <label className="text-xs text-slate-400">От Хоста / IP (необязательно)</label>
+                  <input
+                    type="text"
+                    placeholder="Anywhere, 1.2.3.4 или 1.2.3.0/24"
+                    value={newFrom}
+                    onChange={(e) => setNewFrom(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Ограничьте правило конкретным IP/подсетью, чтобы не открывать порт всему интернету.
+                  </p>
+                </div>
+
+                <div>
                   <label className="text-xs text-slate-400">Комментарий / Заметка</label>
                   <input
                     type="text"
@@ -408,14 +559,17 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
                 <button
                   onClick={() => setShowAddModal(false)}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs transition"
+                  disabled={isSubmittingRule}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs transition disabled:opacity-50"
                 >
                   Отмена
                 </button>
                 <button
                   onClick={handleAddRule}
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold transition"
+                  disabled={isSubmittingRule}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold transition disabled:opacity-50"
                 >
+                  {isSubmittingRule && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Добавить Правило
                 </button>
               </div>
