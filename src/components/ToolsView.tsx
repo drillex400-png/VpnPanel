@@ -299,7 +299,7 @@ systemctl is-active nginx 2>/dev/null || echo "unknown"
   return (
     <div className="space-y-6 pb-20 lg:pb-8 animate-in fade-in duration-200">
       {/* Top Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex items-center justify-between gap-3">
+      <div className="glass-card rounded-3xl p-4 shadow-2xl flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-bold text-white flex items-center gap-2">
             <Wrench className="w-5 h-5 text-fuchsia-400" />
@@ -321,7 +321,7 @@ systemctl is-active nginx 2>/dev/null || echo "unknown"
       </div>
 
       {/* 1. Crontab Manager */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-md space-y-3">
+      <div className="glass-card rounded-3xl p-4 sm:p-5 shadow-2xl space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-violet-400" />
@@ -400,7 +400,7 @@ systemctl is-active nginx 2>/dev/null || echo "unknown"
       </div>
 
       {/* 2. Linux System Users */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-md space-y-3">
+      <div className="glass-card rounded-3xl p-4 sm:p-5 shadow-2xl space-y-3">
         <div className="flex items-center gap-2">
           <Users className="w-5 h-5 text-purple-400" />
           <div>
@@ -447,7 +447,7 @@ systemctl is-active nginx 2>/dev/null || echo "unknown"
 
       {/* 3. Software Installer -- real detected install/version/running status for Docker
           and Nginx, refreshed with the rest of this tab's data (see checkSoftwareStatus). */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-md space-y-3">
+      <div className="glass-card rounded-3xl p-4 sm:p-5 shadow-2xl space-y-3">
         <div className="flex items-center gap-2">
           <Package className="w-5 h-5 text-fuchsia-400" />
           <div>
@@ -563,7 +563,7 @@ systemctl is-active nginx 2>/dev/null || echo "unknown"
       </div>
 
       {/* 4. System Maintenance Quick Actions */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-md space-y-3">
+      <div className="glass-card rounded-3xl p-4 sm:p-5 shadow-2xl space-y-3">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
           <Zap className="w-5 h-5 text-amber-400" />
           Быстрые Скрипты Обслуживания Сервера

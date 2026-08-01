@@ -220,14 +220,14 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
   return (
     <div className="space-y-4 pb-20 lg:pb-8 animate-in fade-in duration-200">
       {/* Top Toolbar */}
-      <div className="bg-[#0f0f0f] border border-[#1f1f1f] rounded-3xl p-5 shadow-2xl space-y-4">
+      <div className="glass-card rounded-3xl p-5 shadow-2xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <Folder className="w-5 h-5 text-violet-400" />
               Визуальный Файловый Менеджер
             </h2>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-slate-400">
               Просмотр, редактирование и управление файлами сервера по SSH
             </p>
           </div>
@@ -236,7 +236,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
             <button
               onClick={() => fetchDirectoryFiles(currentPath)}
               disabled={isLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-[#171717] hover:bg-[#202020] text-violet-400 rounded-xl text-xs font-semibold border border-[#2d2d2d] transition disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-slate-950 hover:bg-slate-800 text-violet-400 rounded-xl text-xs font-semibold border border-slate-700 transition disabled:opacity-50"
               title="Обновить содержимое директории"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
@@ -247,7 +247,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                 setIsFolder(false);
                 setShowCreateModal(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-[#171717] hover:bg-[#202020] text-gray-300 rounded-xl text-xs font-semibold border border-[#2d2d2d] transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-slate-950 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition"
             >
               <FilePlus className="w-4 h-4 text-violet-400" />
               Новый Файл
@@ -257,7 +257,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                 setIsFolder(true);
                 setShowCreateModal(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-[#171717] hover:bg-[#202020] text-gray-300 rounded-xl text-xs font-semibold border border-[#2d2d2d] transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-slate-950 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition"
             >
               <FolderPlus className="w-4 h-4 text-amber-400" />
               Новая Папка
@@ -266,41 +266,41 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
         </div>
 
         {/* Breadcrumb Path Bar */}
-        <div className="flex items-center gap-2 bg-[#171717] px-3 py-2 rounded-2xl border border-[#242424] text-xs text-gray-300 font-mono overflow-x-auto">
+        <div className="flex items-center gap-2 bg-slate-950 px-3 py-2 rounded-2xl border border-slate-800 text-xs text-slate-300 font-mono overflow-x-auto">
           <button
             onClick={() => {
               const parts = currentPath.split("/").filter(Boolean);
               parts.pop();
               setCurrentPath("/" + parts.join("/"));
             }}
-            className="p-1 hover:text-violet-400 text-gray-400 transition"
+            className="p-1 hover:text-violet-400 text-slate-400 transition"
             title="На уровень выше"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <span className="text-gray-500">Путь:</span>
+          <span className="text-slate-500">Путь:</span>
           <span className="text-violet-300 font-semibold truncate">{currentPath}</span>
         </div>
 
         {/* Search Bar */}
         <div className="relative">
-          <Search className="w-4 h-4 text-gray-500 absolute left-3 top-2.5" />
+          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
           <input
             type="text"
             placeholder="Поиск файлов или каталогов..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#171717] border border-[#242424] rounded-2xl pl-9 pr-4 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-violet-500 transition"
+            className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-violet-500 transition"
           />
         </div>
       </div>
 
       {/* Files Table / Grid */}
-      <div className="bg-[#0f0f0f] border border-[#1f1f1f] rounded-3xl shadow-2xl p-4 overflow-hidden">
+      <div className="glass-card rounded-3xl shadow-2xl p-4 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-gray-300">
+          <table className="w-full text-left text-xs text-slate-300">
             <thead>
-              <tr className="border-b border-[#242424] text-[10px] text-gray-500 uppercase font-bold tracking-widest bg-[#171717]">
+              <tr className="border-b border-slate-800 text-[10px] text-slate-500 uppercase font-bold tracking-widest bg-slate-950">
                 <th className="py-2.5 px-4">Имя</th>
                 <th className="py-2.5 px-3">Размер</th>
                 <th className="py-2.5 px-3">Права</th>
@@ -308,13 +308,13 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                 <th className="py-2.5 px-3 text-right">Действия</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#242424] font-mono text-[11px]">
+            <tbody className="divide-y divide-slate-800 font-mono text-[11px]">
               {filteredFiles.map((file, idx) => (
                 <tr
                   key={idx}
                   onClick={() => setSelectedFile(file)}
-                  className={`group hover:bg-[#171717] transition cursor-pointer ${
-                    selectedFile?.path === file.path ? "bg-[#202020]" : ""
+                  className={`group hover:bg-slate-950 transition cursor-pointer ${
+                    selectedFile?.path === file.path ? "bg-slate-800/60" : ""
                   }`}
                 >
                   <td className="py-3 px-4">
@@ -323,33 +323,33 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                         e.stopPropagation();
                         handleOpenFile(file);
                       }}
-                      className="flex items-center gap-2.5 text-gray-200 hover:text-violet-400 text-left font-sans text-xs font-semibold"
+                      className="flex items-center gap-2.5 text-slate-200 hover:text-violet-400 text-left font-sans text-xs font-semibold"
                     >
                       {file.isDir ? (
                         <Folder className="w-4 h-4 text-violet-400 shrink-0" />
                       ) : file.extension === "conf" || file.extension === "yml" ? (
                         <FileCode className="w-4 h-4 text-amber-400 shrink-0" />
                       ) : (
-                        <FileText className="w-4 h-4 text-gray-400 shrink-0" />
+                        <FileText className="w-4 h-4 text-slate-400 shrink-0" />
                       )}
                       <span className="truncate max-w-[140px] sm:max-w-xs">{file.name}</span>
                     </button>
                   </td>
-                  <td className="py-3 px-3 text-gray-500">{file.size}</td>
+                  <td className="py-3 px-3 text-slate-500">{file.size}</td>
                   <td className="py-3 px-3">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setPermissionFile(file);
                       }}
-                      className="hover:text-violet-300 transition flex items-center gap-1 text-[10px] bg-[#171717] px-2 py-0.5 rounded-full border border-[#242424]"
+                      className="hover:text-violet-300 transition flex items-center gap-1 text-[10px] bg-slate-950 px-2 py-0.5 rounded-full border border-slate-800"
                       title="Click to edit permissions (chmod)"
                     >
-                      <Lock className="w-2.5 h-2.5 text-gray-500" />
+                      <Lock className="w-2.5 h-2.5 text-slate-500" />
                       {file.permissions}
                     </button>
                   </td>
-                  <td className="py-3 px-3 text-gray-500 hidden sm:table-cell">
+                  <td className="py-3 px-3 text-slate-500 hidden sm:table-cell">
                     {file.owner}:{file.group}
                   </td>
                   <td className="py-3 px-3 text-right">
@@ -360,7 +360,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                             e.stopPropagation();
                             handleOpenFile(file);
                           }}
-                          className="p-1.5 hover:bg-[#242424] rounded-lg text-violet-400 transition"
+                          className="p-1.5 hover:bg-slate-800 rounded-lg text-violet-400 transition"
                           title="Edit File"
                         >
                           <Edit className="w-3.5 h-3.5" />
@@ -371,7 +371,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
                           e.stopPropagation();
                           handleDeleteFile(file);
                         }}
-                        className="p-1.5 hover:bg-[#242424] rounded-lg text-rose-400 transition"
+                        className="p-1.5 hover:bg-slate-800 rounded-lg text-rose-400 transition"
                         title="Delete File"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

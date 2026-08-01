@@ -101,7 +101,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ server }) => {
   return (
     <div className="space-y-4 pb-20 lg:pb-8 animate-in fade-in duration-200">
       {/* Terminal Title Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex items-center justify-between">
+      <div className="glass-card rounded-3xl p-4 shadow-2xl flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-fuchsia-400">
             <TerminalIcon className="w-5 h-5" />

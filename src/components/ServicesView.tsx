@@ -154,7 +154,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
   return (
     <div className="space-y-4 pb-20 lg:pb-8 animate-in fade-in duration-200">
       {/* Top Controls */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-3">
+      <div className="glass-card rounded-3xl p-4 shadow-2xl space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -242,7 +242,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
           return (
             <div
               key={idx}
-              className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-3 flex flex-col justify-between hover:border-slate-700 transition"
+              className="glass-card glass-card-hover rounded-3xl p-4 shadow-2xl space-y-3 flex flex-col justify-between"
             >
               <div>
                 <div className="flex items-start justify-between gap-2">

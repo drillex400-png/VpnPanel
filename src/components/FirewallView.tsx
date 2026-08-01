@@ -294,7 +294,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
   return (
     <div className="space-y-5 pb-20 lg:pb-8 animate-in fade-in duration-200">
       {/* Top Banner: Firewall Status */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="glass-card rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div
             className={`w-12 h-12 rounded-2xl flex items-center justify-center border shadow-inner shrink-0 ${
@@ -360,7 +360,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
       </div>
 
       {!hasLoadedOnce && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 text-center">
+        <div className="glass-card rounded-3xl p-4 text-xs text-slate-400 text-center">
           Загрузка данных фаервола…
         </div>
       )}
@@ -379,7 +379,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
 
       {/* Rules Table */}
       {ufwInstalled && (
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-md overflow-hidden p-4 space-y-3">
+      <div className="glass-card rounded-3xl shadow-2xl overflow-hidden p-4 space-y-3">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
           <Shield className="w-4 h-4 text-violet-400" />
           Активные Правила Безопасности UFW ({rules.length})
@@ -444,7 +444,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
       )}
 
       {/* Listening Ports Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">
+      <div className="glass-card rounded-3xl shadow-2xl p-4 space-y-3">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
           <Radio className="w-4 h-4 text-purple-400" />
           Открытые Прослушиваемые Порты (Netstat / Сокеты)
