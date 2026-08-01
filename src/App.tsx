@@ -23,14 +23,39 @@ import { DashboardView } from "./components/DashboardView";
 import { ServerConnectModal } from "./components/ServerConnectModal";
 import { Loader2 } from "lucide-react";
 
-const VPNView = lazy(() => import("./components/VPNView").then((m) => ({ default: m.VPNView })));
-const FileManagerView = lazy(() => import("./components/FileManagerView").then((m) => ({ default: m.FileManagerView })));
-const ProcessesView = lazy(() => import("./components/ProcessesView").then((m) => ({ default: m.ProcessesView })));
-const ServicesView = lazy(() => import("./components/ServicesView").then((m) => ({ default: m.ServicesView })));
-const FirewallView = lazy(() => import("./components/FirewallView").then((m) => ({ default: m.FirewallView })));
-const LogsView = lazy(() => import("./components/LogsView").then((m) => ({ default: m.LogsView })));
-const TerminalView = lazy(() => import("./components/TerminalView").then((m) => ({ default: m.TerminalView })));
-const ToolsView = lazy(() => import("./components/ToolsView").then((m) => ({ default: m.ToolsView })));
+// Each lazy-loaded tab's dynamic import() is also exposed as a plain prefetch function below --
+// Navigation calls these on hover/focus (see onTabHover), so by the time a user actually clicks
+// a tab they've never opened before, the chunk has often already finished downloading. import()
+// specifiers are cached by the bundler, so calling the same one again here or inside lazy() is
+// free after the first resolution -- no duplicate network fetch.
+const importVPNView = () => import("./components/VPNView");
+const importFileManagerView = () => import("./components/FileManagerView");
+const importProcessesView = () => import("./components/ProcessesView");
+const importServicesView = () => import("./components/ServicesView");
+const importFirewallView = () => import("./components/FirewallView");
+const importLogsView = () => import("./components/LogsView");
+const importTerminalView = () => import("./components/TerminalView");
+const importToolsView = () => import("./components/ToolsView");
+
+const VPNView = lazy(() => importVPNView().then((m) => ({ default: m.VPNView })));
+const FileManagerView = lazy(() => importFileManagerView().then((m) => ({ default: m.FileManagerView })));
+const ProcessesView = lazy(() => importProcessesView().then((m) => ({ default: m.ProcessesView })));
+const ServicesView = lazy(() => importServicesView().then((m) => ({ default: m.ServicesView })));
+const FirewallView = lazy(() => importFirewallView().then((m) => ({ default: m.FirewallView })));
+const LogsView = lazy(() => importLogsView().then((m) => ({ default: m.LogsView })));
+const TerminalView = lazy(() => importTerminalView().then((m) => ({ default: m.TerminalView })));
+const ToolsView = lazy(() => importToolsView().then((m) => ({ default: m.ToolsView })));
+
+const TAB_PREFETCHERS: Partial<Record<TabType, () => Promise<any>>> = {
+  vpn: importVPNView,
+  files: importFileManagerView,
+  processes: importProcessesView,
+  services: importServicesView,
+  firewall: importFirewallView,
+  logs: importLogsView,
+  terminal: importTerminalView,
+  tools: importToolsView,
+};
 
 // Lightweight, theme-matching fallback shown for the brief moment a lazy tab's chunk is
 // being fetched -- avoids a jarring blank flash between tab click and content appearing.
@@ -170,19 +195,28 @@ function Dashboard() {
         <Navigation
           activeTab={activeTab}
           onTabChange={(tab) => setActiveTab(tab)}
+          onTabHover={(tab) => TAB_PREFETCHERS[tab]?.()}
           failedServicesCount={1}
           criticalLogsCount={1}
         />
 
         {/* Viewport Canvas */}
-        <main className="flex-1 p-3 sm:p-6 overflow-y-auto pb-24 lg:pb-8">
-          <AnimatePresence mode="wait">
+        <main className="flex-1 p-3 sm:p-6 overflow-y-auto pb-24 lg:pb-8 relative">
+          {/* mode="wait" previously forced the OUTGOING tab's exit animation to fully finish
+              before the incoming tab even started mounting -- on every single tab switch, that's
+              a mandatory ~220ms of nothing happening, felt as "laggy" navigation, and for a tab
+              opened for the first time the lazy chunk fetch didn't even START until after that
+              delay. Default (concurrent) mode lets the new tab mount and fade in at the same time
+              the old one fades out -- no serial wait -- and `initial={false}` skips animating the
+              very first paint on load (nothing to cross-fade from yet). */}
+          <AnimatePresence initial={false}>
             <motion.div
               key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              exit={{ opacity: 0, y: -4, position: "absolute" }}
+              transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full"
             >
               {activeTab === "dashboard" && (
                 <DashboardView

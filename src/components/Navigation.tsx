@@ -16,6 +16,10 @@ import {
 interface NavigationProps {
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
+  // Fired on hover/focus of a nav item, before the click -- lets the parent kick off that
+  // tab's lazy import() ahead of time so by the time the click lands, the chunk is often
+  // already fetched (no Suspense fallback flash on a tab opened for the first time).
+  onTabHover?: (tab: TabType) => void;
   failedServicesCount?: number;
   criticalLogsCount?: number;
 }
@@ -39,6 +43,7 @@ const ACTIVE_SPRING = { type: "spring" as const, stiffness: 420, damping: 34 };
 export const Navigation: React.FC<NavigationProps> = ({
   activeTab,
   onTabChange,
+  onTabHover,
   failedServicesCount = 1,
   criticalLogsCount = 1,
 }) => {
@@ -58,6 +63,9 @@ export const Navigation: React.FC<NavigationProps> = ({
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
+                onMouseEnter={() => onTabHover?.(item.id)}
+                onFocus={() => onTabHover?.(item.id)}
+                onTouchStart={() => onTabHover?.(item.id)}
                 className={`relative flex flex-col items-center justify-center py-2 px-3 min-w-[66px] min-h-[50px] rounded-2xl shrink-0 active:scale-95 ${
                   isActive ? "text-violet-300 font-bold" : "text-slate-400 hover:text-slate-200"
                 }`}
@@ -117,6 +125,8 @@ export const Navigation: React.FC<NavigationProps> = ({
                 <button
                   key={item.id}
                   onClick={() => onTabChange(item.id)}
+                  onMouseEnter={() => onTabHover?.(item.id)}
+                  onFocus={() => onTabHover?.(item.id)}
                   className={`relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl font-semibold text-xs overflow-hidden ${
                     isActive ? "text-violet-300 font-bold" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
                   }`}
