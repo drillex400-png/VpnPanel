@@ -299,7 +299,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
           <div
             className={`w-12 h-12 rounded-2xl flex items-center justify-center border shadow-inner shrink-0 ${
               ufwActive
-                ? "bg-amber-950/80 border-amber-800/80 text-amber-400"
+                ? "bg-violet-950/80 border-violet-800/80 text-violet-400"
                 : "bg-slate-800 border-slate-700 text-slate-400"
             }`}
           >
@@ -313,7 +313,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
               <span
                 className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                   ufwActive
-                    ? "bg-amber-950 text-amber-400 border border-amber-800/60"
+                    ? "bg-violet-950 text-violet-400 border border-violet-800/60"
                     : "bg-slate-800 text-slate-400"
                 }`}
               >
@@ -330,7 +330,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
           <button
             onClick={fetchFirewallData}
             disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 rounded-xl font-semibold text-xs transition disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-violet-400 border border-slate-700 rounded-xl font-semibold text-xs transition disabled:opacity-50"
             title="Обновить правила файрвола и порты"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
@@ -342,7 +342,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition disabled:opacity-50 ${
               ufwActive
                 ? "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-                : "bg-amber-600 hover:bg-amber-500 text-white shadow-md"
+                : "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-950/40"
             }`}
           >
             {isToggling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -351,7 +351,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
           <button
             onClick={() => setShowAddModal(true)}
             disabled={!ufwInstalled}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold shadow-md transition disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-950/40 transition disabled:opacity-50"
           >
             <Plus className="w-4 h-4" />
             Добавить Правило
@@ -365,9 +365,9 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
         </div>
       )}
       {hasLoadedOnce && !ufwInstalled && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 shrink-0 text-slate-400" />
-          <span>UFW не установлен на этом сервере. Установите его (например, <code className="font-mono text-amber-400">apt install ufw</code>) через вкладку «Утилиты» или терминал.</span>
+        <div className="bg-amber-950/30 border border-amber-800/50 rounded-2xl p-4 text-xs text-amber-200 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
+          <span>UFW не установлен на этом сервере. Установите его (например, <code className="font-mono text-amber-300">apt install ufw</code>) через вкладку «Утилиты» или терминал.</span>
         </div>
       )}
       {hasLoadedOnce && fetchError && (
@@ -381,7 +381,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
       {ufwInstalled && (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-md overflow-hidden p-4 space-y-3">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
-          <Shield className="w-4 h-4 text-amber-400" />
+          <Shield className="w-4 h-4 text-violet-400" />
           Активные Правила Безопасности UFW ({rules.length})
         </h3>
 
@@ -467,7 +467,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
             <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
               {listeningPorts.map((lp, idx) => (
                 <tr key={idx} className="hover:bg-slate-800/40 transition">
-                  <td className="py-2.5 px-3 font-bold text-amber-400">:{lp.port}</td>
+                  <td className="py-2.5 px-3 font-bold text-fuchsia-400">:{lp.port}</td>
                   <td className="py-2.5 px-3 text-slate-400">{lp.proto}</td>
                   <td className="py-2.5 px-3 font-sans text-xs text-slate-200">{lp.process}</td>
                   <td className="py-2.5 px-3 text-right text-fuchsia-400 font-bold">{lp.pid}</td>
@@ -485,7 +485,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
             <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-4 sm:p-5 space-y-4 shadow-2xl my-auto max-h-[85vh] overflow-y-auto scrollbar-thin">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-amber-400 shrink-0" />
+                  <Plus className="w-4 h-4 text-violet-400 shrink-0" />
                   <span>Добавить Правило Файрвола UFW</span>
                 </h3>
                 <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
@@ -501,7 +501,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
                     placeholder="8080"
                     value={newPort}
                     onChange={(e) => setNewPort(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
                   />
                 </div>
 
@@ -537,7 +537,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
                     placeholder="Anywhere, 1.2.3.4 или 1.2.3.0/24"
                     value={newFrom}
                     onChange={(e) => setNewFrom(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
                   />
                   <p className="text-[10px] text-slate-500 mt-1">
                     Ограничьте правило конкретным IP/подсетью, чтобы не открывать порт всему интернету.
@@ -567,7 +567,7 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
                 <button
                   onClick={handleAddRule}
                   disabled={isSubmittingRule}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold transition disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-xl text-xs font-semibold transition disabled:opacity-50"
                 >
                   {isSubmittingRule && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Добавить Правило

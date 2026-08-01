@@ -92,7 +92,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div>
             <h4 className="font-bold text-amber-200">Не удалось подключиться к удаленному SSH хосту</h4>
             <p className="mt-1 font-mono text-amber-300/90">{metrics.connectionError}</p>
-            <p className="mt-1.5 text-[11px] text-gray-400">
+            <p className="mt-1.5 text-[11px] text-slate-400">
               Примечание: Локальные IP-адреса (<code className="text-amber-300 font-mono">192.168.x.x</code>, <code className="text-amber-300 font-mono">10.x.x.x</code>) недоступны из облачного контейнера. Используйте демо-профиль для тестирования или укажите публичный IP.
             </p>
           </div>
@@ -342,7 +342,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
 
-          <div className="pt-3 border-t border-[#242424] flex items-center justify-between text-[11px] text-gray-500 font-mono">
+          <div className="pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-500 font-mono">
             <span>SSH: Ed25519</span>
             <span className="text-violet-400 font-medium font-sans">Защищенная сессия</span>
           </div>
@@ -350,16 +350,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Disks & File Systems Table */}
-      <div className="bg-[#171717] border border-[#242424] rounded-3xl p-5 shadow-xl space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 flex items-center gap-2">
+      <div className="glass-card rounded-3xl p-5 shadow-2xl space-y-3">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
           <HardDrive className="w-4 h-4 text-violet-400" />
           Подключенные Дисковые Тома ({metrics.disk.length})
         </h2>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-gray-300">
+          <table className="w-full text-left text-xs text-slate-300">
             <thead>
-              <tr className="border-b border-[#242424] text-[10px] text-gray-500 uppercase font-bold tracking-widest">
+              <tr className="border-b border-slate-800/60 text-[10px] text-slate-500 uppercase font-bold tracking-widest">
                 <th className="py-2.5 px-3">Точка монтирования</th>
                 <th className="py-2.5 px-3">Файловая система</th>
                 <th className="py-2.5 px-3">Объем</th>
@@ -367,19 +367,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <th className="py-2.5 px-3 text-right">Свободно</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#242424] font-mono text-[11px]">
+            <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
               {metrics.disk.map((d, i) => (
-                <tr key={i} className="hover:bg-[#202020] transition">
+                <tr key={i} className="hover:bg-slate-800/40 transition">
                   <td className="py-3 px-3 font-semibold text-violet-400">
                     {d.mount}
                   </td>
-                  <td className="py-3 px-3 text-gray-500">{d.filesystem}</td>
-                  <td className="py-3 px-3 text-gray-300">
+                  <td className="py-3 px-3 text-slate-500">{d.filesystem}</td>
+                  <td className="py-3 px-3 text-slate-300">
                     {d.usedGb} / {d.sizeGb} GB
                   </td>
                   <td className="py-3 px-3 w-40">
                     <div className="flex items-center gap-2">
-                      <div className="w-full bg-[#242424] h-1.5 rounded-full overflow-hidden">
+                      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full ${
                             d.usePct > 80 ? "bg-rose-500" : "bg-violet-500"
@@ -387,7 +387,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           style={{ width: `${d.usePct}%` }}
                         />
                       </div>
-                      <span className="text-[10px] text-gray-500 font-sans">
+                      <span className="text-[10px] text-slate-500 font-sans">
                         {d.usePct}%
                       </span>
                     </div>
