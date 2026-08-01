@@ -148,14 +148,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* 4 Core Gauge Widgets Grid matching Elegant Dark mockup */}
+      {/* 4 Core Gauge Widgets -- CPU is the hero metric (bigger number + subtle glow ring) since
+          it's the number most people glance at first on a live server monitor. All four now share
+          one accent family (violet/fuchsia) for their "normal" state -- amber/rose are reserved
+          strictly for real threshold warnings (>50%/>80-85%), not decorative per-tile variety. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* CPU Card */}
-        <div className="glass-card rounded-3xl p-4.5 shadow-xl space-y-2 glass-card-hover">
+        {/* CPU Card -- hero */}
+        <div className="glass-card rounded-3xl p-4.5 shadow-xl space-y-2 glass-card-hover ring-1 ring-violet-500/25 relative overflow-hidden">
+          <div className="absolute -top-8 -right-8 w-24 h-24 bg-violet-500/10 rounded-full blur-2xl pointer-events-none" />
           <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
             Загрузка CPU
           </p>
-          <p className="text-2xl font-bold font-mono text-violet-400 drop-shadow-sm">
+          <p className="text-3xl font-extrabold font-mono text-violet-400 drop-shadow-sm tabular-nums">
             <AnimatedNumber value={metrics.cpu.usagePct} suffix="%" />
           </p>
           <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
@@ -182,13 +186,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
             Память ОЗУ
           </p>
-          <p className="text-2xl font-bold font-mono text-fuchsia-400 drop-shadow-sm">
+          <p className="text-2xl font-bold font-mono text-fuchsia-400 drop-shadow-sm tabular-nums">
             <AnimatedNumber value={parseFloat(ramUsedGb)} decimals={1} /><span className="text-xs text-slate-400">/{ramTotalGb}GB</span>
           </p>
           <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
             <motion.div
               className={`h-full rounded-full ${
-                ramPct > 85 ? "bg-rose-500" : "bg-gradient-to-r from-fuchsia-500 to-blue-500"
+                ramPct > 85 ? "bg-rose-500" : "bg-gradient-to-r from-violet-500 to-fuchsia-400"
               }`}
               animate={{ width: `${ramPct}%` }}
               transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
@@ -205,13 +209,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
             Занято на Диске
           </p>
-          <p className="text-2xl font-bold font-mono text-amber-400 drop-shadow-sm">
+          <p className="text-2xl font-bold font-mono text-violet-300 drop-shadow-sm tabular-nums">
             <AnimatedNumber value={mainDisk.usePct} suffix="%" /><span className="text-xs text-slate-400"> ({mainDisk.usedGb}GB)</span>
           </p>
           <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
             <motion.div
               className={`h-full rounded-full ${
-                mainDisk.usePct > 85 ? "bg-rose-500" : "bg-gradient-to-r from-amber-500 to-orange-400"
+                mainDisk.usePct > 85 ? "bg-rose-500" : "bg-gradient-to-r from-violet-500 to-fuchsia-400"
               }`}
               animate={{ width: `${mainDisk.usePct}%` }}
               transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
@@ -228,12 +232,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
             Трафик Сети
           </p>
-          <p className="text-2xl font-bold font-mono text-indigo-400 drop-shadow-sm">
+          <p className="text-2xl font-bold font-mono text-fuchsia-300 drop-shadow-sm tabular-nums">
             <AnimatedNumber value={metrics.network.txKbps} /><span className="text-xs text-slate-400">KB/s</span>
           </p>
           <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3 overflow-hidden p-0.5 border border-white/5">
             <motion.div
-              className="bg-gradient-to-r from-indigo-500 to-purple-400 h-full rounded-full"
+              className="bg-gradient-to-r from-violet-500 to-fuchsia-400 h-full rounded-full"
               animate={{ width: `${Math.min(100, (metrics.network.txKbps / 1200) * 100)}%` }}
               transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             />
@@ -306,7 +310,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 transition group text-xs text-slate-200 active:scale-98"
               >
                 <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-400">
+                  <span className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
                     <Cpu className="w-3.5 h-3.5" />
                   </span>
                   Диспетчер процессов (htop)
@@ -319,7 +323,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 transition group text-xs text-slate-200 active:scale-98"
               >
                 <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                  <span className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                   </span>
                   Службы Systemd и Демоны
@@ -332,7 +336,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 transition group text-xs text-slate-200 active:scale-98"
               >
                 <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                  <span className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
                     <ShieldCheck className="w-3.5 h-3.5" />
                   </span>
                   Файрвол UFW и Открытые Порты
