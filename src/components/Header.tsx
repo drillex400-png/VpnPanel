@@ -6,6 +6,7 @@ import { Logo } from "./Logo";
 import { useToast } from "../contexts/ToastContext";
 import {
   Server,
+  Search,
   ShieldCheck,
   RefreshCw,
   Zap,
@@ -184,6 +185,20 @@ export const Header: React.FC<HeaderProps> = ({
             a *second* item to the end; with a single child it collapses back to flex-start,
             which would otherwise yank these controls over to the left edge on phones. */}
         <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0">
+          {/* Cmd+K launcher hint -- also clickable, dispatches the same event the keyboard
+              shortcut listens for. Hidden on the smallest screens where there isn't room and
+              a physical keyboard is unlikely anyway. */}
+          <button
+            onClick={() => window.dispatchEvent(new Event("panelvpn:open-command-palette"))}
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-2 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-white/10 transition text-slate-400 hover:text-violet-300"
+            title="Быстрые команды"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <kbd className="text-[10px] font-mono font-bold px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400">
+              ⌘K
+            </kbd>
+          </button>
+
           {/* Active Server Selector */}
           <div className="relative">
             <button

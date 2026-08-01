@@ -15,6 +15,7 @@ import { LoginPage } from "./components/LoginPage";
 import { ToastContainer } from "./components/ToastContainer";
 import { Header } from "./components/Header";
 import { Navigation } from "./components/Navigation";
+import { CommandPalette } from "./components/CommandPalette";
 // Dashboard is the tab every user lands on first, so it stays eagerly bundled -- no point
 // showing a loading flash for the very first thing they see. Every other tab is fetched on
 // demand via React.lazy(), so opening the app no longer downloads the VPN protocol engine,
@@ -186,6 +187,14 @@ function Dashboard() {
         onManualRefresh={loadLiveMetrics}
         latencyMs={latencyMs}
         currentUser={user}
+        onLogout={logout}
+      />
+
+      {/* Global Cmd+K / Ctrl+K quick-action launcher -- lives once at the app root since it
+          needs to intercept the shortcut regardless of which tab is currently focused. */}
+      <CommandPalette
+        onNavigate={(tab) => setActiveTab(tab)}
+        onRefresh={loadLiveMetrics}
         onLogout={logout}
       />
 

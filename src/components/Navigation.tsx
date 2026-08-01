@@ -24,7 +24,7 @@ interface NavigationProps {
   criticalLogsCount?: number;
 }
 
-const NAV_ITEMS: { id: TabType; label: string; icon: React.FC<{ className?: string }> }[] = [
+export const NAV_ITEMS: { id: TabType; label: string; icon: React.FC<{ className?: string }> }[] = [
   { id: "dashboard", label: "Обзор", icon: LayoutDashboard },
   { id: "vpn", label: "ВПН", icon: ShieldCheck },
   { id: "files", label: "Файлы", icon: FolderTree },
