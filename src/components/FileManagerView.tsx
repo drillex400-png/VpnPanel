@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { FileItem, SSHConfig } from "../types";
 import { INITIAL_FILES, execCommand } from "../services/api";
+import { shQuote, buildHeredocWriteCommand } from "../utils/shellQuote";
 import { useToast } from "../contexts/ToastContext";
 import {
   Folder,
@@ -51,7 +52,10 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
   const fetchDirectoryFiles = async (dirPath: string) => {
     setIsLoading(true);
     try {
-      const res = await execCommand(server, `ls -la --time-style=long-iso "${dirPath}" || ls -la "${dirPath}"`);
+      const res = await execCommand(
+        server,
+        `ls -la --time-style=long-iso ${shQuote(dirPath)} || ls -la ${shQuote(dirPath)}`
+      );
       if (res && res.stdout) {
         const lines = res.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
         const parsed: FileItem[] = [];
@@ -133,7 +137,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
       setIsLoadingContent(true);
       setFileContent("");
       try {
-        const res = await execCommand(server, `cat "${file.path}"`);
+        const res = await execCommand(server, `cat -- ${shQuote(file.path)}`);
         setFileContent(res && res.stdout !== undefined ? res.stdout : `# Failed to load content of ${file.path}`);
       } catch (e) {
         setFileContent(`# Error loading file content.`);
@@ -145,7 +149,11 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
 
   const handleSaveFile = async () => {
     setIsSaving(true);
-    await execCommand(server, `cat << 'EOF' > ${editingFile?.path}\n${fileContent}\nEOF`);
+    if (!editingFile) {
+      setIsSaving(false);
+      return;
+    }
+    await execCommand(server, buildHeredocWriteCommand(editingFile.path, fileContent));
     setTimeout(() => {
       setIsSaving(false);
       setEditingFile(null);
@@ -155,23 +163,30 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
 
   const handleDeleteFile = async (file: FileItem) => {
     if (confirm(`Are you sure you want to delete "${file.name}"?`)) {
-      await execCommand(server, `rm -rf ${file.path}`);
+      await execCommand(server, `rm -rf -- ${shQuote(file.path)}`);
       setFiles((prev) => prev.filter((f) => f.path !== file.path));
       if (selectedFile?.path === file.path) setSelectedFile(null);
     }
   };
 
   const handleCreateFileOrFolder = async () => {
-    if (!newFileName.trim()) return;
-    const newPath = `${currentPath}/${newFileName.trim()}`;
+    const trimmedName = newFileName.trim();
+    if (!trimmedName) return;
+    // Reject path separators/traversal -- this field is meant to create a single
+    // entry inside currentPath, never to escape it or address an absolute path.
+    if (trimmedName.includes("/") || trimmedName === "." || trimmedName === "..") {
+      toast.error("Недопустимое имя", "Имя файла/папки не может содержать \"/\" или быть \".\"/\"..\"");
+      return;
+    }
+    const newPath = `${currentPath}/${trimmedName}`;
     if (isFolder) {
-      await execCommand(server, `mkdir -p ${newPath}`);
+      await execCommand(server, `mkdir -p -- ${shQuote(newPath)}`);
     } else {
-      await execCommand(server, `touch ${newPath}`);
+      await execCommand(server, `touch -- ${shQuote(newPath)}`);
     }
 
     const newItem: FileItem = {
-      name: newFileName.trim(),
+      name: trimmedName,
       path: newPath,
       isDir: isFolder,
       size: isFolder ? "4.0 KB" : "0 B",
@@ -179,7 +194,7 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
       owner: server.username,
       group: server.username,
       modified: "Just now",
-      extension: isFolder ? undefined : newFileName.split(".").pop(),
+      extension: isFolder ? undefined : trimmedName.split(".").pop(),
     };
 
     setFiles((prev) => [newItem, ...prev]);
@@ -189,7 +204,13 @@ export const FileManagerView: React.FC<FileManagerViewProps> = ({ server }) => {
 
   const handleApplyPermissions = async () => {
     if (!permissionFile) return;
-    await execCommand(server, `chmod ${newMode} ${permissionFile.path}`);
+    // newMode comes from a free-text field -- restrict to valid octal chmod modes
+    // (3-4 digits, each 0-7) so it can never be smuggled in as a shell flag/command.
+    if (!/^[0-7]{3,4}$/.test(newMode.trim())) {
+      toast.error("Неверный режим доступа", "Укажите права в виде 3-4 восьмеричных цифр, например 755");
+      return;
+    }
+    await execCommand(server, `chmod ${newMode.trim()} -- ${shQuote(permissionFile.path)}`);
     setFiles((prev) =>
       prev.map((f) => (f.path === permissionFile.path ? { ...f, permissions: newMode } : f))
     );

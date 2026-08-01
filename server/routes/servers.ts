@@ -3,7 +3,7 @@ import { body, param } from "express-validator";
 import crypto from "crypto";
 import { db, withDb, DbServerProfile } from "../db.js";
 import { encryptSecret, decryptSecret } from "../crypto.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
 import { asyncHandler, checkValidation, AppError } from "../middleware/errorHandler.js";
 import { audit } from "../services/audit.js";
 
@@ -48,8 +48,9 @@ serversRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     await db.read();
-    const mine = db.data.servers.filter((s) => s.ownerId === req.user!.userId);
-    res.json([DEMO_SERVER_PUBLIC, ...mine.map(toPublicProfile)]);
+    // Workspace-wide: every authenticated team member (admin/operator/viewer) sees the
+    // same set of server profiles. Write/delete/exec are still role-gated below.
+    res.json([DEMO_SERVER_PUBLIC, ...db.data.servers.map(toPublicProfile)]);
   })
 );
 
@@ -63,6 +64,7 @@ const upsertValidators = [
 
 serversRouter.post(
   "/",
+  requireRole("admin", "operator"),
   upsertValidators,
   checkValidation,
   asyncHandler(async (req, res) => {
@@ -74,7 +76,7 @@ serversRouter.post(
 
     const result = await withDb((data) => {
       let profile: DbServerProfile;
-      const existingIdx = id ? data.servers.findIndex((s) => s.id === id && s.ownerId === req.user!.userId) : -1;
+      const existingIdx = id ? data.servers.findIndex((s) => s.id === id) : -1;
 
       if (existingIdx >= 0) {
         profile = data.servers[existingIdx];
@@ -118,6 +120,7 @@ serversRouter.post(
 
 serversRouter.delete(
   "/:id",
+  requireRole("admin", "operator"),
   param("id").isString(),
   checkValidation,
   asyncHandler(async (req, res) => {
@@ -126,7 +129,7 @@ serversRouter.delete(
       throw new AppError("Демо-профиль нельзя удалить", 403);
     }
     await withDb((data) => {
-      data.servers = data.servers.filter((s) => !(s.id === id && s.ownerId === req.user!.userId));
+      data.servers = data.servers.filter((s) => s.id !== id);
     });
     await audit(req, "server.delete", { serverId: id, success: true });
     res.json({ success: true });
@@ -142,7 +145,11 @@ export async function resolveServerConnection(
     return { host: "demo", port: 22, username: "ubuntu", isDemo: true, name: DEMO_SERVER_PUBLIC.name };
   }
   await db.read();
-  const profile = db.data.servers.find((s) => s.id === serverId && s.ownerId === userId);
+  // Workspace-wide: any authenticated team member can resolve a shared server profile's
+  // connection details, not just the original creator (`userId` kept in the signature for
+  // audit-log call sites, no longer used to filter). Role gating (who's allowed to actually
+  // hit /ssh/exec at all) happens at the route level via requireRole, not here.
+  const profile = db.data.servers.find((s) => s.id === serverId);
   if (!profile) {
     throw new AppError("Профиль сервера не найден", 404);
   }

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { body } from "express-validator";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
 import { asyncHandler, checkValidation, AppError } from "../middleware/errorHandler.js";
 import { sshExecLimiter, sshTestLimiter } from "../middleware/rateLimit.js";
 import {
@@ -23,6 +23,7 @@ sshRouter.use(requireAuth);
 // Credentials here are never persisted -- they exist only for the duration of this request.
 sshRouter.post(
   "/test-connection",
+  requireRole("admin", "operator"),
   sshTestLimiter,
   [
     body("host").trim().isLength({ min: 1, max: 255 }),
@@ -58,6 +59,7 @@ sshRouter.post(
 
 sshRouter.post(
   "/exec",
+  requireRole("admin", "operator"),
   sshExecLimiter,
   [body("serverId").isString().isLength({ min: 1 }), body("command").isString().isLength({ min: 1, max: 20000 })],
   checkValidation,

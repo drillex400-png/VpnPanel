@@ -9,6 +9,7 @@ import { generalApiLimiter } from "./server/middleware/rateLimit.js";
 import { errorHandler } from "./server/middleware/errorHandler.js";
 import { authRouter } from "./server/routes/auth.js";
 import { serversRouter } from "./server/routes/servers.js";
+import { usersRouter } from "./server/routes/users.js";
 import { sshRouter } from "./server/routes/ssh.js";
 import { aiRouter } from "./server/routes/ai.js";
 import { attachMetricsWebSocket } from "./server/services/wsMetrics.js";
@@ -61,6 +62,7 @@ app.use("/api", generalApiLimiter);
 // === API ROUTES ===
 app.use("/api/auth", authRouter);
 app.use("/api/servers", serversRouter);
+app.use("/api/users", usersRouter);
 app.use("/api/ssh", sshRouter);
 app.use("/api/ai", aiRouter);
 

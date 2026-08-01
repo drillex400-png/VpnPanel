@@ -4,6 +4,7 @@ import { SSHConfig, VPNProtocolCatalog, InstalledVPNService, VPNAssistantMessage
 import { execCommand, authFetch } from "../services/api";
 import { useToast } from "../contexts/ToastContext";
 import { runDeployPipeline, DeployStep } from "../utils/deployPipeline";
+import { shQuote } from "../utils/shellQuote";
 import { QRCodeSVG } from "./QRCodeSVG";
 import {
   ShieldCheck,
@@ -1537,7 +1538,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
               bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u root
               sudo mkdir -p /etc/xray /usr/local/etc/xray
               if [ ! -f /etc/xray/cert.crt ]; then
-                sudo openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/xray/cert.key -out /etc/xray/cert.crt -days 3650 -subj "/CN=${deploySni}" 2>/dev/null || true
+                sudo openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/xray/cert.key -out /etc/xray/cert.crt -days 3650 -subj ${shQuote(`/CN=${deploySni}`)} 2>/dev/null || true
               fi
               command -v xray >/dev/null 2>&1 && echo BIN_OK || echo BIN_MISSING
             `);
@@ -1546,7 +1547,7 @@ export const VPNView: React.FC<VPNViewProps> = ({ server }) => {
             return execCommand(server, `
               sudo mkdir -p /etc/sing-box /usr/local/bin
               if [ ! -f /etc/sing-box/cert.crt ]; then
-                sudo openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/sing-box/cert.key -out /etc/sing-box/cert.crt -days 3650 -subj "/CN=${deploySni}" 2>/dev/null || true
+                sudo openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/sing-box/cert.key -out /etc/sing-box/cert.crt -days 3650 -subj ${shQuote(`/CN=${deploySni}`)} 2>/dev/null || true
               fi
               if ! command -v sing-box >/dev/null 2>&1; then
                 curl -fsSL https://sing-box.app/install.sh | sh -s -- 2>/dev/null || {
