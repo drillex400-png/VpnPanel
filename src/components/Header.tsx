@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { SSHConfig } from "../types";
 import { execCommand } from "../services/api";
+import { Logo } from "./Logo";
 import { useToast } from "../contexts/ToastContext";
 import {
   Server,
@@ -158,16 +159,16 @@ export const Header: React.FC<HeaderProps> = ({
             Full-width mobile screens need that space for the functional controls instead;
             the branding only shows from sm: up where there's room for it to read properly. */}
         <div className="hidden sm:flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-violet-500/20 via-slate-800 to-fuchsia-500/20 border border-violet-500/30 flex items-center justify-center shadow-lg shadow-violet-950/30 text-violet-400 shrink-0">
-            <Server className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-violet-500/20 via-slate-800 to-fuchsia-500/20 border border-violet-500/30 flex items-center justify-center shadow-lg shadow-violet-950/30 shrink-0">
+            <Logo className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="font-extrabold text-sm sm:text-base tracking-tight text-white leading-tight truncate">
-                Linux Cockpit
+                PanelVPN
               </h1>
               <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/10 text-violet-400 border border-violet-500/30 shadow-inner">
-                PRO SSH v2.4
+                SSH v2.4
               </span>
             </div>
             <p className="text-[10px] sm:text-[11px] text-slate-400 flex items-center gap-1.5 uppercase tracking-wider font-semibold truncate mt-0.5">

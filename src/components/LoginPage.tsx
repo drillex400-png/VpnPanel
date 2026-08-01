@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { ShieldCheck, Mail, Lock, LogIn, UserPlus, AlertTriangle, Loader2 } from "lucide-react";
+import { Mail, Lock, LogIn, UserPlus, AlertTriangle, Loader2 } from "lucide-react";
+import { Logo } from "./Logo";
 import { useAuth } from "../contexts/AuthContext";
 
 export const LoginPage: React.FC = () => {
@@ -32,8 +33,8 @@ export const LoginPage: React.FC = () => {
     <div className="min-h-screen bg-[#0a0712] bg-radial-glow text-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
         <div className="flex flex-col items-center text-center mb-6">
-          <span className="p-3 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 border border-violet-500/30 text-violet-400 shadow-lg shadow-violet-500/10 mb-3">
-            <ShieldCheck className="w-7 h-7" />
+          <span className="p-3 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 border border-violet-500/30 shadow-lg shadow-violet-500/10 mb-3">
+            <Logo className="w-8 h-8" />
           </span>
           <h1 className="text-xl font-black text-white tracking-tight">PanelVPN</h1>
           <p className="text-xs text-slate-400 mt-1">
