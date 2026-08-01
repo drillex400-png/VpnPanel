@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { CronJob, UserAccount, SSHConfig, SoftwarePackageStatus } from "../types";
-import { INITIAL_CRON_JOBS, INITIAL_USERS, execCommand } from "../services/api";
+import { execCommand } from "../services/api";
+import { shQuote } from "../utils/shellQuote";
 import { useToast } from "../contexts/ToastContext";
 import {
   Wrench,
@@ -26,10 +27,12 @@ interface ToolsViewProps {
 
 export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
   const toast = useToast();
-  const [cronJobs, setCronJobs] = useState<CronJob[]>(INITIAL_CRON_JOBS);
-  const [users, setUsers] = useState<UserAccount[]>(INITIAL_USERS);
+  const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
+  const [users, setUsers] = useState<UserAccount[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddCronModal, setShowAddCronModal] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [usersFetchError, setUsersFetchError] = useState<string | null>(null);
 
   // Software installer: real detected state for Docker/Nginx (version + running status),
   // refreshed alongside the rest of this tab's data -- not a static placeholder.
@@ -46,8 +49,12 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
   const fetchToolsData = async () => {
     setIsLoading(true);
     try {
-      // 1. Crontab
+      // 1. Crontab -- `crontab -l` legitimately exits non-zero with "no crontab for <user>"
+      // on stderr when the user simply has none set up; that's a real, valid empty state,
+      // not a fetch failure, so it's not reported as an error. Any other failure (SSH error,
+      // permission denied, unexpected output) IS surfaced instead of silently doing nothing.
       const cronRes = await execCommand(server, "crontab -l");
+      const noCrontab = /no crontab for/i.test(cronRes?.stderr || "");
       if (cronRes && cronRes.stdout) {
         const cronLines = cronRes.stdout.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
         const parsedCron: CronJob[] = [];
@@ -72,7 +79,11 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
             });
           }
         }
-        if (parsedCron.length > 0) setCronJobs(parsedCron);
+        setCronJobs(parsedCron);
+      } else if (noCrontab) {
+        setCronJobs([]);
+      } else if (cronRes && cronRes.code !== 0) {
+        toast.error("Не удалось получить cron-задачи", cronRes.stderr || "Ошибка выполнения crontab -l");
       }
 
       // 2. Users from /etc/passwd
@@ -110,15 +121,28 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ server }) => {
             }
           }
         }
-        if (parsedUsers.length > 0) setUsers(parsedUsers);
+        if (parsedUsers.length > 0) {
+          setUsers(parsedUsers);
+          setUsersFetchError(null);
+        } else {
+          // /etc/passwd always exists and always has at least root -- an empty parse means
+          // something went wrong, not that the server genuinely has zero users.
+          setUsersFetchError("Не удалось разобрать /etc/passwd");
+          toast.error("Не удалось получить список пользователей", "Сервер вернул неожиданный формат вывода");
+        }
+      } else {
+        setUsersFetchError(passwdRes?.stderr || "Сервер не вернул данные");
+        toast.error("Не удалось получить список пользователей", passwdRes?.stderr || "Пустой ответ от сервера");
       }
       // 3. Docker + Nginx real install/version status (single combined probe -- same
       //    ===KEY=== sectioning convention the backend uses for its own metrics probe).
       await checkSoftwareStatus();
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to fetch tools data:", e);
+      toast.error("Не удалось получить данные", e?.message || "Ошибка подключения к серверу");
     } finally {
       setIsLoading(false);
+      setHasLoadedOnce(true);
     }
   };
 
@@ -238,7 +262,12 @@ systemctl is-active nginx 2>/dev/null || echo "unknown"
 
   const handleAddCron = async () => {
     if (!cronCmd.trim()) return;
-    await execCommand(server, `(crontab -l 2>/dev/null; echo "${cronSchedule} ${cronCmd.trim()}") | crontab -`);
+    // The full cron line is single-quote-escaped as ONE shell argument to `echo` --
+    // this is what actually matters (not the double-quoted version this replaced),
+    // since double quotes alone still let $(...) / backticks / $VAR expand before
+    // the line is even handed to crontab.
+    const cronLine = `${cronSchedule} ${cronCmd.trim()}`;
+    await execCommand(server, `(crontab -l 2>/dev/null; echo ${shQuote(cronLine)}) | crontab -`);
 
     const newJob: CronJob = {
       id: "cron-" + Date.now(),
@@ -327,6 +356,13 @@ systemctl is-active nginx 2>/dev/null || echo "unknown"
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+              {cronJobs.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-6 px-3 text-center text-slate-500 font-sans">
+                    {!hasLoadedOnce ? "Загрузка cron-задач…" : "Задач не найдено"}
+                  </td>
+                </tr>
+              )}
               {cronJobs.map((job) => (
                 <tr key={job.id} className="hover:bg-slate-800/40 transition">
                   <td className="py-3 px-3 font-semibold text-violet-400">
@@ -378,6 +414,15 @@ systemctl is-active nginx 2>/dev/null || echo "unknown"
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {users.length === 0 && (
+            <div className="col-span-full py-6 text-center text-slate-500 text-xs">
+              {!hasLoadedOnce
+                ? "Загрузка пользователей…"
+                : usersFetchError
+                ? `⚠ ${usersFetchError}`
+                : "Пользователи не найдены"}
+            </div>
+          )}
           {users.map((usr, idx) => (
             <div
               key={idx}

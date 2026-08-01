@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { FirewallRule, SSHConfig } from "../types";
-import { INITIAL_FIREWALL_RULES, execCommand } from "../services/api";
+import { execCommand } from "../services/api";
+import { shQuote } from "../utils/shellQuote";
+import { useToast } from "../contexts/ToastContext";
 import {
   Shield,
   ShieldCheck,
@@ -21,22 +23,19 @@ interface FirewallViewProps {
 }
 
 export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
-  const [rules, setRules] = useState<FirewallRule[]>(INITIAL_FIREWALL_RULES);
-  const [ufwActive, setUfwActive] = useState(true);
+  const toast = useToast();
+  const [rules, setRules] = useState<FirewallRule[]>([]);
+  const [ufwActive, setUfwActive] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Listening ports list
+  // Listening ports list -- starts empty; only ever populated from a real `ss -tulpn` parse
+  // (see fetchFirewallData below), never from canned/fake data.
   const [listeningPorts, setListeningPorts] = useState<
     Array<{ port: number | string; proto: string; process: string; pid: number | string }>
-  >([
-    { port: 22, proto: "TCP", process: "sshd (OpenSSH)", pid: 891 },
-    { port: 80, proto: "TCP", process: "nginx (HTTP)", pid: 1204 },
-    { port: 443, proto: "TCP", process: "nginx (HTTPS)", pid: 1204 },
-    { port: 3000, proto: "TCP", process: "node (API Server)", pid: 3210 },
-    { port: 5432, proto: "TCP", process: "postgres (Database)", pid: 1540 },
-    { port: 6379, proto: "TCP", process: "redis-server", pid: 1890 },
-  ]);
+  >([]);
 
   // New Rule Form
   const [newPort, setNewPort] = useState("");
@@ -111,10 +110,14 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
         }
         if (parsedPorts.length > 0) setListeningPorts(parsedPorts);
       }
-    } catch (e) {
+      setFetchError(null);
+    } catch (e: any) {
       console.error("Failed to fetch firewall data:", e);
+      setFetchError(e?.message || "Ошибка подключения к серверу");
+      toast.error("Не удалось получить данные фаервола", e?.message || "Ошибка подключения к серверу");
     } finally {
       setIsLoading(false);
+      setHasLoadedOnce(true);
     }
   };
 
@@ -130,14 +133,34 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
 
   const handleDeleteRule = async (rule: FirewallRule) => {
     if (confirm(`Remove firewall rule for port ${rule.port}/${rule.protocol}?`)) {
-      await execCommand(server, `sudo ufw delete ${rule.action.toLowerCase()} ${rule.port}/${rule.protocol}`);
+      // rule.port/rule.action are parsed from `ufw status verbose` output, not raw
+      // free-text, but we still single-quote them before rebuilding the shell
+      // command -- defense in depth against an unexpected/crafted upstream value.
+      await execCommand(
+        server,
+        `sudo ufw delete ${shQuote(rule.action.toLowerCase())} ${shQuote(`${rule.port}/${rule.protocol}`)}`
+      );
       setRules((prev) => prev.filter((r) => r.id !== rule.id));
     }
   };
 
+  // ufw accepts a single port (1-65535) or a port range "start:end". Anything else
+  // is rejected client-side before it ever reaches a shell command.
+  const isValidUfwPort = (value: string): boolean =>
+    /^\d{1,5}(:\d{1,5})?$/.test(value.trim()) &&
+    value
+      .trim()
+      .split(":")
+      .every((p) => Number(p) >= 1 && Number(p) <= 65535);
+
   const handleAddRule = async () => {
-    if (!newPort.trim()) return;
-    const cmd = `sudo ufw ${newAction.toLowerCase()} ${newPort.trim()}/${newProto}`;
+    const trimmedPort = newPort.trim();
+    if (!trimmedPort) return;
+    if (!isValidUfwPort(trimmedPort)) {
+      toast.error("Некорректный порт", "Введите порт 1-65535 или диапазон вида 6000:6007");
+      return;
+    }
+    const cmd = `sudo ufw ${shQuote(newAction.toLowerCase())} ${shQuote(`${trimmedPort}/${newProto}`)}`;
     await execCommand(server, cmd);
 
     const newRule: FirewallRule = {
@@ -219,6 +242,18 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
           </button>
         </div>
       </div>
+
+      {!hasLoadedOnce && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 text-center">
+          Загрузка данных фаервола…
+        </div>
+      )}
+      {hasLoadedOnce && fetchError && (
+        <div className="bg-rose-950/40 border border-rose-800/60 rounded-2xl p-4 text-xs text-rose-300 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0" />
+          <span>Не удалось получить актуальные данные с сервера: {fetchError}</span>
+        </div>
+      )}
 
       {/* Rules Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-md overflow-hidden p-4 space-y-3">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ProcessItem, SSHConfig } from "../types";
-import { INITIAL_PROCESSES, execCommand } from "../services/api";
+import { execCommand } from "../services/api";
 import { useToast } from "../contexts/ToastContext";
 import {
   Cpu,
@@ -21,8 +21,10 @@ interface ProcessesViewProps {
 
 export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
   const toast = useToast();
-  const [processes, setProcesses] = useState<ProcessItem[]>(INITIAL_PROCESSES);
+  const [processes, setProcesses] = useState<ProcessItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"cpuPct" | "memPct" | "pid">("cpuPct");
   const [selectedProcess, setSelectedProcess] = useState<ProcessItem | null>(null);
@@ -78,12 +80,26 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
         }
         if (parsed.length > 0) {
           setProcesses(parsed);
+          setFetchError(null);
+        } else {
+          // `ps aux` returned but nothing parsed -- either a genuinely empty/odd result or an
+          // unexpected output shape. Either way, do NOT silently keep showing whatever was on
+          // screen before as if it were current: surface it so the user knows this isn't live
+          // data right now.
+          setFetchError("Не удалось разобрать вывод `ps aux` с сервера");
+          toast.error("Не удалось получить список процессов", "Сервер вернул неожиданный формат вывода");
         }
+      } else {
+        setFetchError(res?.stderr || "Сервер не вернул данные");
+        toast.error("Не удалось получить список процессов", res?.stderr || "Пустой ответ от сервера");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to fetch live processes:", e);
+      setFetchError(e?.message || "Ошибка подключения к серверу");
+      toast.error("Не удалось получить список процессов", e?.message || "Ошибка подключения к серверу");
     } finally {
       setIsLoading(false);
+      setHasLoadedOnce(true);
     }
   };
 
@@ -255,6 +271,19 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#242424] font-mono text-[11px]">
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-8 px-3 text-center text-gray-500 font-sans">
+                    {!hasLoadedOnce
+                      ? "Загрузка процессов…"
+                      : fetchError
+                      ? `⚠ ${fetchError}`
+                      : searchQuery
+                      ? "Ничего не найдено по фильтру"
+                      : "Процессы не найдены"}
+                  </td>
+                </tr>
+              )}
               {filtered.map((proc) => (
                 <tr
                   key={proc.pid}

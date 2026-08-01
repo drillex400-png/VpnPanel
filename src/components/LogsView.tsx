@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { LogEntry, SSHConfig } from "../types";
-import { INITIAL_LOGS, execCommand, authFetch } from "../services/api";
+import { execCommand, authFetch } from "../services/api";
 import { useToast } from "../contexts/ToastContext";
 import {
   FileText,
@@ -21,8 +21,10 @@ interface LogsViewProps {
 
 export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
   const toast = useToast();
-  const [logs, setLogs] = useState<LogEntry[]>(INITIAL_LOGS);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [levelFilter, setLevelFilter] = useState<string>("ALL");
   const [sourceFilter, setSourceFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -74,12 +76,24 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
           });
         }
 
-        if (parsed.length > 0) setLogs(parsed.reverse());
+        if (parsed.length > 0) {
+          setLogs(parsed.reverse());
+          setFetchError(null);
+        } else {
+          setFetchError("Не удалось разобрать вывод `journalctl`");
+          toast.error("Не удалось получить журнал", "Сервер вернул неожиданный формат вывода");
+        }
+      } else {
+        setFetchError(res?.stderr || "Сервер не вернул данные");
+        toast.error("Не удалось получить журнал", res?.stderr || "Пустой ответ от сервера");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to fetch logs:", e);
+      setFetchError(e?.message || "Ошибка подключения к серверу");
+      toast.error("Не удалось получить журнал", e?.message || "Ошибка подключения к серверу");
     } finally {
       setIsLoading(false);
+      setHasLoadedOnce(true);
     }
   };
 
@@ -237,6 +251,15 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
         </div>
 
         <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+          {filteredLogs.length === 0 && (
+            <div className="py-8 text-center text-slate-500 font-sans">
+              {!hasLoadedOnce
+                ? "Загрузка журнала…"
+                : fetchError
+                ? `⚠ ${fetchError}`
+                : "Записей не найдено"}
+            </div>
+          )}
           {filteredLogs.map((log) => {
             const isCrit = log.level === "CRITICAL";
             const isErr = log.level === "ERROR";

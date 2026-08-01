@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { ServiceItem, SSHConfig } from "../types";
-import { INITIAL_SERVICES, execCommand } from "../services/api";
+import { execCommand } from "../services/api";
+import { shQuote } from "../utils/shellQuote";
 import { useToast } from "../contexts/ToastContext";
 import {
   Boxes,
@@ -21,10 +22,18 @@ interface ServicesViewProps {
   server: SSHConfig;
 }
 
+// systemd unit names are parsed from `systemctl list-units` output, not raw free
+// text, but we still validate the shape before ever building a shell command with
+// them (defense in depth -- a compromised/weird remote output should fail closed,
+// not get shell-interpreted).
+const isSafeUnitName = (unit: string): boolean => /^[A-Za-z0-9@:_.\\-]+\.service$/.test(unit);
+
 export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
   const toast = useToast();
-  const [services, setServices] = useState<ServiceItem[]>(INITIAL_SERVICES);
+  const [services, setServices] = useState<ServiceItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [filterState, setFilterState] = useState<"all" | "active" | "failed">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeLogService, setActiveLogService] = useState<ServiceItem | null>(null);
@@ -48,12 +57,24 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
         }
         if (parsed.length > 0) {
           setServices(parsed);
+          setFetchError(null);
+        } else {
+          // Don't silently keep showing whatever was on screen before as if it were current --
+          // surface it so the user knows this isn't live data right now.
+          setFetchError("Не удалось разобрать вывод `systemctl list-units`");
+          toast.error("Не удалось получить список служб", "Сервер вернул неожиданный формат вывода");
         }
+      } else {
+        setFetchError(res?.stderr || "Сервер не вернул данные");
+        toast.error("Не удалось получить список служб", res?.stderr || "Пустой ответ от сервера");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to fetch services:", e);
+      setFetchError(e?.message || "Ошибка подключения к серверу");
+      toast.error("Не удалось получить список служб", e?.message || "Ошибка подключения к серверу");
     } finally {
       setIsLoading(false);
+      setHasLoadedOnce(true);
     }
   };
 
@@ -74,7 +95,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
   // exit 0 even when the unit fails to actually reach the requested state (e.g. missing
   // sudo rights, a crash-looping service, a masked unit).
   const getServiceStatus = async (unit: string): Promise<{ active: string; sub: string }> => {
-    const res = await execCommand(server, `systemctl show ${unit} --property=ActiveState,SubState --value`);
+    if (!isSafeUnitName(unit)) return { active: "unknown", sub: "unknown" };
+    const res = await execCommand(server, `systemctl show -- ${shQuote(unit)} --property=ActiveState,SubState --value`);
     const [active, sub] = res.stdout.trim().split("\n").map((s) => s.trim());
     return { active: active || "unknown", sub: sub || "unknown" };
   };
@@ -86,7 +108,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
   };
 
   const handleServiceAction = async (service: ServiceItem, action: "start" | "stop" | "restart") => {
-    await execCommand(server, `sudo systemctl ${action} ${service.unit}`);
+    if (!isSafeUnitName(service.unit)) {
+      toast.error("Недопустимое имя службы", `"${service.unit}" не похоже на корректный systemd unit`);
+      return;
+    }
+    await execCommand(server, `sudo systemctl ${action} -- ${shQuote(service.unit)}`);
     // Small delay -- systemd needs a moment to settle into its final state, especially restart.
     await new Promise((r) => setTimeout(r, 800));
     const { active, sub } = await getServiceStatus(service.unit);
@@ -109,7 +135,12 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
   const handleOpenJournal = async (service: ServiceItem) => {
     setActiveLogService(service);
     setIsLoadingLogs(true);
-    const res = await execCommand(server, `sudo journalctl -u ${service.unit} -n 30 --no-pager`);
+    if (!isSafeUnitName(service.unit)) {
+      setIsLoadingLogs(false);
+      setJournalLogs("Недопустимое имя службы -- журнал не запрошен.");
+      return;
+    }
+    const res = await execCommand(server, `sudo journalctl -u ${shQuote(service.unit)} -n 30 --no-pager`);
     setIsLoadingLogs(false);
     if (res.stdout && res.stdout.trim()) {
       setJournalLogs(res.stdout);
@@ -193,6 +224,17 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
 
       {/* Services List Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {filtered.length === 0 && (
+          <div className="col-span-full py-8 text-center text-slate-500 text-xs">
+            {!hasLoadedOnce
+              ? "Загрузка служб…"
+              : fetchError
+              ? `⚠ ${fetchError}`
+              : searchQuery
+              ? "Ничего не найдено по фильтру"
+              : "Службы не найдены"}
+          </div>
+        )}
         {filtered.map((srv, idx) => {
           const isActive = srv.active === "active";
           const isFailed = srv.active === "failed";
