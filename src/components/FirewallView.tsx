@@ -4,6 +4,7 @@ import { FirewallRule, SSHConfig } from "../types";
 import { execCommand } from "../services/api";
 import { shQuote } from "../utils/shellQuote";
 import { useToast } from "../contexts/ToastContext";
+import { SkeletonLines } from "./Skeleton";
 import {
   Shield,
   ShieldCheck,
@@ -360,8 +361,8 @@ export const FirewallView: React.FC<FirewallViewProps> = ({ server }) => {
       </div>
 
       {!hasLoadedOnce && (
-        <div className="glass-card rounded-3xl p-4 text-xs text-slate-400 text-center">
-          Загрузка данных фаервола…
+        <div className="glass-card rounded-3xl p-4 space-y-2">
+          <SkeletonLines count={4} />
         </div>
       )}
       {hasLoadedOnce && !ufwInstalled && (

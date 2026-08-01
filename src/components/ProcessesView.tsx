@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ProcessItem, SSHConfig } from "../types";
 import { execCommand } from "../services/api";
 import { useToast } from "../contexts/ToastContext";
+import { SkeletonTableRows } from "./Skeleton";
 import {
   Cpu,
   Search,
@@ -271,12 +272,11 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800 font-mono text-[11px]">
-              {filtered.length === 0 && (
+              {!hasLoadedOnce && <SkeletonTableRows rows={7} cols={7} />}
+              {hasLoadedOnce && filtered.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-8 px-3 text-center text-slate-500 font-sans">
-                    {!hasLoadedOnce
-                      ? "Загрузка процессов…"
-                      : fetchError
+                    {fetchError
                       ? `⚠ ${fetchError}`
                       : searchQuery
                       ? "Ничего не найдено по фильтру"
@@ -284,7 +284,7 @@ export const ProcessesView: React.FC<ProcessesViewProps> = ({ server }) => {
                   </td>
                 </tr>
               )}
-              {filtered.map((proc) => (
+              {hasLoadedOnce && filtered.map((proc) => (
                 <tr
                   key={proc.pid}
                   onClick={() => setSelectedProcess(proc)}

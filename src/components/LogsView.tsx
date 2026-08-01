@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { LogEntry, SSHConfig } from "../types";
 import { execCommand, authFetch } from "../services/api";
 import { useToast } from "../contexts/ToastContext";
+import { SkeletonLines } from "./Skeleton";
 import {
   FileText,
   AlertTriangle,
@@ -251,16 +252,13 @@ export const LogsView: React.FC<LogsViewProps> = ({ server }) => {
         </div>
 
         <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-          {filteredLogs.length === 0 && (
+          {!hasLoadedOnce && <SkeletonLines count={7} />}
+          {hasLoadedOnce && filteredLogs.length === 0 && (
             <div className="py-8 text-center text-slate-500 font-sans">
-              {!hasLoadedOnce
-                ? "Загрузка журнала…"
-                : fetchError
-                ? `⚠ ${fetchError}`
-                : "Записей не найдено"}
+              {fetchError ? `⚠ ${fetchError}` : "Записей не найдено"}
             </div>
           )}
-          {filteredLogs.map((log) => {
+          {hasLoadedOnce && filteredLogs.map((log) => {
             const isCrit = log.level === "CRITICAL";
             const isErr = log.level === "ERROR";
             const isWarn = log.level === "WARNING";

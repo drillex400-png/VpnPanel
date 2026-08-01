@@ -42,6 +42,24 @@
   scrollbar-width: none;
 }
 
+/* Skeleton shimmer -- used by Skeleton.tsx for first-load placeholders across views.
+   A diagonal violet-tinted sweep instead of a flat animate-pulse block, so loading states
+   read as "premium telemetry settling in" rather than a generic gray placeholder. */
+@keyframes skeleton-sweep {
+  0% { background-position: -150% 0; }
+  100% { background-position: 150% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    100deg,
+    rgba(196, 165, 255, 0.06) 20%,
+    rgba(196, 165, 255, 0.16) 40%,
+    rgba(196, 165, 255, 0.06) 60%
+  );
+  background-size: 250% 100%;
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
 /* Metallic & Glassmorphism Card Utility Classes -- reworked for a "matte" premium finish:
    flatter, more uniform frosted fill (vs. the old diagonal gradient sheen that read as
    glossy/metallic), heavier blur so content behind genuinely diffuses instead of a sharp

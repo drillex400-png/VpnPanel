@@ -4,6 +4,7 @@ import { CronJob, UserAccount, SSHConfig, SoftwarePackageStatus } from "../types
 import { execCommand } from "../services/api";
 import { shQuote } from "../utils/shellQuote";
 import { useToast } from "../contexts/ToastContext";
+import { SkeletonTableRows, SkeletonCards } from "./Skeleton";
 import {
   Wrench,
   Clock,
@@ -356,14 +357,15 @@ systemctl is-active nginx 2>/dev/null || echo "unknown"
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
-              {cronJobs.length === 0 && (
+              {!hasLoadedOnce && <SkeletonTableRows rows={4} cols={5} />}
+              {hasLoadedOnce && cronJobs.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-6 px-3 text-center text-slate-500 font-sans">
-                    {!hasLoadedOnce ? "Загрузка cron-задач…" : "Задач не найдено"}
+                    Задач не найдено
                   </td>
                 </tr>
               )}
-              {cronJobs.map((job) => (
+              {hasLoadedOnce && cronJobs.map((job) => (
                 <tr key={job.id} className="hover:bg-slate-800/40 transition">
                   <td className="py-3 px-3 font-semibold text-violet-400">
                     {job.schedule}
@@ -414,16 +416,13 @@ systemctl is-active nginx 2>/dev/null || echo "unknown"
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {users.length === 0 && (
+          {!hasLoadedOnce && <SkeletonCards count={6} />}
+          {hasLoadedOnce && users.length === 0 && (
             <div className="col-span-full py-6 text-center text-slate-500 text-xs">
-              {!hasLoadedOnce
-                ? "Загрузка пользователей…"
-                : usersFetchError
-                ? `⚠ ${usersFetchError}`
-                : "Пользователи не найдены"}
+              {usersFetchError ? `⚠ ${usersFetchError}` : "Пользователи не найдены"}
             </div>
           )}
-          {users.map((usr, idx) => (
+          {hasLoadedOnce && users.map((usr, idx) => (
             <div
               key={idx}
               className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-1.5"

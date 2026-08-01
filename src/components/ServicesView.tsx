@@ -4,6 +4,7 @@ import { ServiceItem, SSHConfig } from "../types";
 import { execCommand } from "../services/api";
 import { shQuote } from "../utils/shellQuote";
 import { useToast } from "../contexts/ToastContext";
+import { SkeletonCards } from "./Skeleton";
 import {
   Boxes,
   Play,
@@ -224,18 +225,17 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ server }) => {
 
       {/* Services List Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filtered.length === 0 && (
+        {!hasLoadedOnce && <SkeletonCards count={6} />}
+        {hasLoadedOnce && filtered.length === 0 && (
           <div className="col-span-full py-8 text-center text-slate-500 text-xs">
-            {!hasLoadedOnce
-              ? "Загрузка служб…"
-              : fetchError
+            {fetchError
               ? `⚠ ${fetchError}`
               : searchQuery
               ? "Ничего не найдено по фильтру"
               : "Службы не найдены"}
           </div>
         )}
-        {filtered.map((srv, idx) => {
+        {hasLoadedOnce && filtered.map((srv, idx) => {
           const isActive = srv.active === "active";
           const isFailed = srv.active === "failed";
 
